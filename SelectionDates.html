@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 13px; padding: 8px; }
+      label { display: block; margin-bottom: 6px; }
+      button { margin-top: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="liste">Chargement des dates…</div>
+    <button onclick="valider()">Mettre à jour</button>
+
+    <script>
+      google.script.run.withSuccessHandler(afficherDates).getDatesPourAffichage();
+
+      function afficherDates(dates) {
+        const conteneur = document.getElementById("liste");
+        if (!dates.length) {
+          conteneur.innerHTML = "Aucune date trouvée dans l'onglet Paramètres.";
+          return;
+        }
+        conteneur.innerHTML = dates.map(d =>
+          `<label><input type="checkbox" value="${d}"> ${d}</label>`
+        ).join("");
+      }
+
+      function valider() {
+        const cases = document.querySelectorAll("input[type=checkbox]:checked");
+        const datesChoisies = Array.from(cases).map(c => c.value);
+        google.script.run.withSuccessHandler(() => google.script.host.close())
+          .mettreAJourOngletsSelectionnes(datesChoisies);
+      }
+    </script>
+  </body>
+</html>
