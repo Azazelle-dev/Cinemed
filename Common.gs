@@ -70,13 +70,12 @@ function nomOngletPourDate(date) {
 }
 
 /**
- * Parcourt ARRIVEES et retourne les mouvements confirmés (arrivée et/ou départ)
- * dont la date fait partie de datesAutorisees.
+ * Parcourt toute la feuille ARRIVEES et retourne les mouvements confirmés
+ * (arrivée et/ou départ) dont la date fait partie de datesAutorisees.
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
- * @param {number} [ligneCible] - si fourni, ne traite que cette ligne (1-based, utile pour onEdit)
  * @return {Array<Object>} mouvements { date, type, nom, prenom, telephone, trajet, heurePickup }
  */
-function collecterMouvementsConfirmes(datesAutorisees, ligneCible) {
+function collecterMouvementsConfirmes(datesAutorisees) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
   const enTetes = donnees[0];
@@ -86,11 +85,11 @@ function collecterMouvementsConfirmes(datesAutorisees, ligneCible) {
     idx[cle] = enTetes.indexOf(Global.COLONNES_MASTER[cle]);
   });
 
-  const lignes = ligneCible ? [donnees[ligneCible - 1]] : donnees.slice(1);
+  const lignes = donnees.slice(1);
   const mouvements = [];
 
   lignes.forEach(ligne => {
-    if (!ligne || !ligne[idx.NOM]) return; // ligne vide ou hors bornes, on ignore
+    if (!ligne || !ligne[idx.NOM]) return; // ligne vide, on ignore
 
     const nom = ligne[idx.NOM];
     const prenom = ligne[idx.PRENOM];
@@ -139,8 +138,9 @@ function collecterMouvementsConfirmes(datesAutorisees, ligneCible) {
 }
 
 /**
- * Crée l'onglet avec juste les en-têtes s'il n'existe pas encore.
- * Ne fait rien s'il existe déjà (jamais d'écrasement).
+ * Crée l'onglet avec juste les en-têtes s'il n'existe pas encore, et lui applique
+ * tout de suite la mise en forme (voir formaterOnglet). Ne fait rien s'il existe
+ * déjà (jamais d'écrasement).
  * @param {string} nomOnglet
  * @return {Sheet}
  */
@@ -149,8 +149,51 @@ function assurerOngletExiste(nomOnglet) {
   if (!feuille) {
     feuille = SpreadsheetApp.getActive().insertSheet(nomOnglet);
     feuille.getRange(1, 1, 1, Global.ENTETES_PLANNING_JOUR.length).setValues([Global.ENTETES_PLANNING_JOUR]);
+    formaterOnglet(feuille);
   }
   return feuille;
+}
+
+/**
+ * Mise en forme "tableau propre" d'un onglet journalier : en-tête en gras avec
+ * fond coloré, lignes de données centrées avec bordures fines, bandes de couleur
+ * alternées, colonnes ajustées à la largeur du contenu, première ligne figée.
+ * Rejouable à tout moment sans dégrader le rendu.
+ * @param {Sheet} feuille
+ */
+function formaterOnglet(feuille) {
+  const derniereLigne = feuille.getLastRow();
+  const derniereColonne = feuille.getLastColumn();
+  if (derniereLigne < 1 || derniereColonne < 1) return;
+
+  feuille.getRange(1, 1, 1, derniereColonne)
+    .setFontWeight("bold")
+    .setBackground("#1c4587")
+    .setFontColor("#ffffff")
+    .setHorizontalAlignment("center");
+
+  feuille.setFrozenRows(1);
+
+  if (derniereLigne > 1) {
+    const donnees = feuille.getRange(2, 1, derniereLigne - 1, derniereColonne);
+    donnees.setHorizontalAlignment("center");
+    donnees.setBorder(true, true, true, true, true, true, "#cccccc", SpreadsheetApp.BorderStyle.SOLID);
+
+    // Bandes alternées : on retire les anciennes avant de réappliquer sur la plage à jour
+    feuille.getBandings().forEach(bande => bande.remove());
+    feuille.getRange(1, 1, derniereLigne, derniereColonne)
+      .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
+
+    // "Heure de pick up" est un objet Date complet en interne (date + heure) : sans ce format,
+    // Sheets affiche la date en plus de l'heure. On force l'affichage en heure seule.
+    const enTetes = feuille.getRange(1, 1, 1, derniereColonne).getValues()[0];
+    const idxHeurePickup = enTetes.indexOf("Heure de pick up") + 1;
+    if (idxHeurePickup > 0) {
+      feuille.getRange(2, idxHeurePickup, derniereLigne - 1, 1).setNumberFormat("HH:mm");
+    }
+  }
+
+  feuille.autoResizeColumns(1, derniereColonne);
 }
 
 /**
@@ -216,6 +259,8 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
     feuille.getRange(2, 1, derniereLigneApres - 1, feuille.getLastColumn())
       .sort({ column: idxHeurePickup, ascending: true });
   }
+
+  formaterOnglet(feuille); // réapplique la mise en forme (bordures, bandes, largeur des colonnes) sur la plage à jour
 }
 
 /**

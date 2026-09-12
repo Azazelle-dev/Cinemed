@@ -1,7 +1,7 @@
 /**
  * Main.gs — Point d'entrée du script.
- * Menu (onOpen), actions du menu, et onEdit qui réagit aux modifications
- * de ModeArrivée/ModeDépart dans ARRIVEES.
+ * Menu (onOpen) et actions du menu — aucun déclencheur automatique : la
+ * génération se fait uniquement à la demande, via le menu.
  */
 
 /**
@@ -17,9 +17,14 @@ function onOpen() {
 
 /**
  * Action de menu : génère/met à jour les plannings pour toutes les dates de Paramètres.
+ * Restaure l'onglet actif de départ une fois la génération terminée.
  */
 function menuGenererTout() {
+  const ongletDeDepart = SpreadsheetApp.getActive().getActiveSheet();
+
   genererPlannings(); // pas d'argument = toutes les dates de Paramètres
+
+  SpreadsheetApp.getActive().setActiveSheet(ongletDeDepart);
   SpreadsheetApp.getUi().alert("Tous les plannings ont été générés/mis à jour.");
 }
 
@@ -42,49 +47,15 @@ function getDatesPourAffichage() {
 /**
  * Appelée depuis SelectionDates.html quand l'utilisateur valide sa sélection.
  * Ignore toute valeur qui ne fait pas partie des dates officielles de Paramètres.
+ * Restaure l'onglet actif de départ une fois la génération terminée.
  * @param {string[]} datesTexte - dates au format "dd/MM/yyyy"
  */
 function genererOngletsSelectionnes(datesTexte) {
+  const ongletDeDepart = SpreadsheetApp.getActive().getActiveSheet();
+
   const toutesLesDates = obtenirDatesDisponibles();
   const datesValides = toutesLesDates.filter(d => datesTexte.includes(formatDateCle(d)));
   genererPlannings(datesValides);
-}
 
-/**
- * Déclencheur simple, exécuté automatiquement à chaque modification de cellule.
- * Ne réagit que sur l'onglet ARRIVEES, colonnes ModeArrivée/ModeDépart : dès qu'un
- * trajet y est choisi ou changé, la ligne concernée est immédiatement (re)traitée
- * et placée dans le bon onglet journalier.
- * @param {Object} e - objet événement fourni par Apps Script
- */
-function onEdit(e) {
-  const feuille = e.range.getSheet();
-  if (feuille.getName() !== Global.ONGLET_ARRIVEES) return;
-
-  const ligne = e.range.getRow();
-  if (ligne === 1) return; // en-tête
-
-  const enTetes = feuille.getRange(1, 1, 1, feuille.getLastColumn()).getValues()[0];
-  const idxModeArrivee = enTetes.indexOf(Global.COLONNES_MASTER.MODE_ARRIVEE) + 1;
-  const idxModeDepart  = enTetes.indexOf(Global.COLONNES_MASTER.MODE_DEPART) + 1;
-  const colonne = e.range.getColumn();
-
-  if (colonne !== idxModeArrivee && colonne !== idxModeDepart) return; // pas la bonne colonne, rien à faire
-
-  try {
-    const datesAutorisees = new Set(obtenirDatesDisponibles().map(formatDateCle));
-    const mouvements = collecterMouvementsConfirmes(datesAutorisees, ligne);
-
-    const parOnglet = {};
-    mouvements.forEach(mvt => {
-      const nomOnglet = nomOngletPourDate(mvt.date);
-      if (!parOnglet[nomOnglet]) parOnglet[nomOnglet] = [];
-      parOnglet[nomOnglet].push(mvt);
-    });
-
-    Object.keys(parOnglet).forEach(nomOnglet => ecrireMouvementsDansOnglet(nomOnglet, parOnglet[nomOnglet]));
-
-  } catch (erreur) {
-    console.warn("onEdit ARRIVEES, ligne " + ligne + " ignorée : " + erreur.message);
-  }
+  SpreadsheetApp.getActive().setActiveSheet(ongletDeDepart);
 }
