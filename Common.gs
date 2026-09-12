@@ -139,19 +139,31 @@ function collecterMouvementsConfirmes(datesAutorisees, ligneCible) {
 }
 
 /**
- * Écrit une liste de mouvements dans l'onglet journalier correspondant.
- * Crée l'onglet s'il n'existe pas. Ajoute les mouvements absents, met à jour
- * Heure de pick up / Trajet pour ceux déjà présents, ne touche jamais à Chauffeur
- * (assignation manuelle), puis trie par ordre chronologique.
+ * Crée l'onglet avec juste les en-têtes s'il n'existe pas encore.
+ * Ne fait rien s'il existe déjà (jamais d'écrasement).
  * @param {string} nomOnglet
- * @param {Array<Object>} mouvements
+ * @return {Sheet}
  */
-function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
+function assurerOngletExiste(nomOnglet) {
   let feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
   if (!feuille) {
     feuille = SpreadsheetApp.getActive().insertSheet(nomOnglet);
     feuille.getRange(1, 1, 1, Global.ENTETES_PLANNING_JOUR.length).setValues([Global.ENTETES_PLANNING_JOUR]);
   }
+  return feuille;
+}
+
+/**
+ * Écrit une liste de mouvements dans l'onglet journalier correspondant.
+ * Utilise assurerOngletExiste pour ne jamais planter si l'onglet n'a pas encore
+ * été créé. Ajoute les mouvements absents, met à jour Heure de pick up / Trajet
+ * pour ceux déjà présents, ne touche jamais à Chauffeur (assignation manuelle),
+ * puis trie par ordre chronologique.
+ * @param {string} nomOnglet
+ * @param {Array<Object>} mouvements
+ */
+function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
+  const feuille = assurerOngletExiste(nomOnglet);
 
   const enTetes = feuille.getRange(1, 1, 1, feuille.getLastColumn()).getValues()[0];
   const idxNom          = enTetes.indexOf("Nom") + 1;
@@ -207,14 +219,18 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 }
 
 /**
- * Orchestration : rassemble les mouvements confirmés (pour les dates données, ou
- * toutes celles de Paramètres si non précisé), les regroupe par onglet cible, puis écrit.
+ * Orchestration, en deux temps :
+ * 1. Crée un onglet pour chaque date demandée, même sans aucun mouvement confirmé
+ *    (répond à "un onglet pour chaque date de Paramètres, même vide").
+ * 2. Rassemble les mouvements confirmés et les écrit dans les onglets concernés.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
-  const clesAutorisees = new Set(dates.map(formatDateCle));
 
+  dates.forEach(date => assurerOngletExiste(nomOngletPourDate(date)));
+
+  const clesAutorisees = new Set(dates.map(formatDateCle));
   const mouvements = collecterMouvementsConfirmes(clesAutorisees);
 
   const parOnglet = {};
