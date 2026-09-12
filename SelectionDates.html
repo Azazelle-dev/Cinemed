@@ -10,7 +10,7 @@
   </head>
   <body>
     <div id="liste">Chargement des dates…</div>
-    <button onclick="valider()">Mettre à jour</button>
+    <button onclick="valider()">Générer</button>
 
     <script>
       google.script.run.withSuccessHandler(afficherDates).getDatesPourAffichage();
@@ -30,7 +30,7 @@
         const cases = document.querySelectorAll("input[type=checkbox]:checked");
         const datesChoisies = Array.from(cases).map(c => c.value);
         google.script.run.withSuccessHandler(() => google.script.host.close())
-          .mettreAJourOngletsSelectionnes(datesChoisies);
+          .genererOngletsSelectionnes(datesChoisies);
       }
     </script>
   </body>
