@@ -221,6 +221,13 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   const idxHeurePickup  = enTetes.indexOf("Heure de pick up") + 1;
   const idxTrajet       = enTetes.indexOf("Trajet") + 1;
 
+  // Sans ça, Sheets réinterprète une chaîne comme "15:05" écrite via setValue comme
+  // une heure/date (même comportement qu'une saisie manuelle sur une cellule au format
+  // "Automatique"). Le format "@" (texte brut) empêche cette reconversion.
+  if (idxHeurePickup > 0) {
+    feuille.getRange(1, idxHeurePickup, feuille.getMaxRows(), 1).setNumberFormat("@");
+  }
+
   // Repérer les lignes déjà présentes (clé Nom|Prénom|Type → numéro de ligne)
   const derniereLigneAvant = feuille.getLastRow();
   const dejaPresents = new Map();
