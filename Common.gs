@@ -40,6 +40,19 @@ function calculerHeurePickupDepart(trajet, heureDepart) {
 }
 
 /**
+ * Convertit un objet Date en texte "HH:mm" pur (ex: "15:05"). On écrit ce texte
+ * directement dans la cellule, jamais l'objet Date complet, pour éviter tout
+ * risque que Sheets affiche la date en plus de l'heure, quel que soit le format
+ * appliqué à la cellule. Comme c'est du 24h avec zéros, un tri alphabétique
+ * donne le même ordre qu'un tri chronologique (chaque onglet ne couvre qu'un jour).
+ * @param {Date} date
+ * @return {string}
+ */
+function formatHeureAffichage(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), "HH:mm");
+}
+
+/**
  * Lit la liste des dates disponibles depuis Paramètres (colonne D, à partir de la ligne 2) —
  * seule source de vérité pour savoir quelles dates sont valides.
  * @return {Date[]} dates triées chronologiquement
@@ -109,7 +122,8 @@ function collecterMouvementsConfirmes(datesAutorisees) {
           telephone: telephone,
           trajet: modeArrivee,
           // Pas de délai à soustraire pour une arrivée : le chauffeur récupère au moment de l'arrivée
-          heurePickup: combinerDateEtHeure(dateArrivee, ligne[idx.HEURE_ARRIVEE])
+          // On stocke directement le texte "HH:mm", jamais l'objet Date complet
+          heurePickup: formatHeureAffichage(combinerDateEtHeure(dateArrivee, ligne[idx.HEURE_ARRIVEE]))
         });
       }
     }
@@ -128,7 +142,7 @@ function collecterMouvementsConfirmes(datesAutorisees) {
           prenom: prenom,
           telephone: telephone,
           trajet: modeDepart,
-          heurePickup: calculerHeurePickupDepart(modeDepart, heureDepartComplete)
+          heurePickup: formatHeureAffichage(calculerHeurePickupDepart(modeDepart, heureDepartComplete))
         });
       }
     }
@@ -183,14 +197,6 @@ function formaterOnglet(feuille) {
     feuille.getBandings().forEach(bande => bande.remove());
     feuille.getRange(1, 1, derniereLigne, derniereColonne)
       .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
-
-    // "Heure de pick up" est un objet Date complet en interne (date + heure) : sans ce format,
-    // Sheets affiche la date en plus de l'heure. On force l'affichage en heure seule.
-    const enTetes = feuille.getRange(1, 1, 1, derniereColonne).getValues()[0];
-    const idxHeurePickup = enTetes.indexOf("Heure de pick up") + 1;
-    if (idxHeurePickup > 0) {
-      feuille.getRange(2, idxHeurePickup, derniereLigne - 1, 1).setNumberFormat("HH:mm");
-    }
   }
 
   feuille.autoResizeColumns(1, derniereColonne);
@@ -227,15 +233,22 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   }
 
   const nouvellesLignes = [];
+  let quelqueChoseAChange = false;
 
   mouvements.forEach(mvt => {
     const cle = mvt.nom + "|" + mvt.prenom + "|" + mvt.type;
 
     if (dejaPresents.has(cle)) {
-      // Déjà listé : on rafraîchit juste l'heure et le trajet, sans toucher au reste
+      // Déjà listé : on rafraîchit juste l'heure et le trajet si besoin, sans toucher au reste
       const ligneExistante = dejaPresents.get(cle);
-      feuille.getRange(ligneExistante, idxHeurePickup).setValue(mvt.heurePickup);
-      feuille.getRange(ligneExistante, idxTrajet).setValue(mvt.trajet);
+      const heureActuelle = feuille.getRange(ligneExistante, idxHeurePickup).getValue();
+      const trajetActuel  = feuille.getRange(ligneExistante, idxTrajet).getValue();
+
+      if (heureActuelle !== mvt.heurePickup || trajetActuel !== mvt.trajet) {
+        feuille.getRange(ligneExistante, idxHeurePickup).setValue(mvt.heurePickup);
+        feuille.getRange(ligneExistante, idxTrajet).setValue(mvt.trajet);
+        quelqueChoseAChange = true;
+      }
     } else {
       nouvellesLignes.push([
         "",              // Chauffeur — assignation manuelle
@@ -252,7 +265,12 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   if (nouvellesLignes.length > 0) {
     feuille.getRange(feuille.getLastRow() + 1, 1, nouvellesLignes.length, nouvellesLignes[0].length)
       .setValues(nouvellesLignes);
+    quelqueChoseAChange = true;
   }
+
+  // On ne trie/reformate que s'il y a eu un changement réel : évite des appels API inutiles
+  // quand une génération est relancée sans qu'aucune donnée n'ait bougé.
+  if (!quelqueChoseAChange) return;
 
   const derniereLigneApres = feuille.getLastRow();
   if (derniereLigneApres > 1) {
