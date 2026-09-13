@@ -53,6 +53,21 @@ function formatHeureAffichage(date) {
 }
 
 /**
+ * Préfixe une chaîne d'une apostrophe pour forcer Sheets à la garder en texte
+ * littéral à l'écriture (setValue/setValues). Sans ça, même une cellule au
+ * format "@" peut voir une valeur qui ressemble à une heure réinterprétée en
+ * date/heure : c'est le même mécanisme de détection qu'une saisie manuelle,
+ * appliqué aussi via l'API. L'apostrophe n'apparaît jamais à l'affichage ni
+ * dans un getValue() ultérieur — à utiliser uniquement au moment d'écrire,
+ * jamais pour les comparaisons (qui doivent rester sur le texte "propre").
+ * @param {string} texte
+ * @return {string}
+ */
+function forcerTexteLitteral(texte) {
+  return "'" + texte;
+}
+
+/**
  * Lit la liste des dates disponibles depuis Paramètres (colonne D, à partir de la ligne 2) —
  * seule source de vérité pour savoir quelles dates sont valides.
  * @return {Date[]} dates triées chronologiquement
@@ -252,7 +267,7 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
       const trajetActuel  = feuille.getRange(ligneExistante, idxTrajet).getValue();
 
       if (heureActuelle !== mvt.heurePickup || trajetActuel !== mvt.trajet) {
-        feuille.getRange(ligneExistante, idxHeurePickup).setValue(mvt.heurePickup);
+        feuille.getRange(ligneExistante, idxHeurePickup).setValue(forcerTexteLitteral(mvt.heurePickup));
         feuille.getRange(ligneExistante, idxTrajet).setValue(mvt.trajet);
         quelqueChoseAChange = true;
       }
@@ -261,7 +276,7 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
         "",              // Chauffeur — assignation manuelle
         mvt.nom,
         mvt.prenom,
-        mvt.heurePickup,
+        forcerTexteLitteral(mvt.heurePickup),
         mvt.type,
         mvt.trajet,
         mvt.telephone
