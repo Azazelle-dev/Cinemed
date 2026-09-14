@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="CMakeProjectFlavorService">
+    <option name="flavorId" value="CMakePlainProjectFlavor" />
+  </component>
+  <component name="CMakeSettings">
+    <configurations />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="f758e184-c394-42d4-ae6f-a2cc21785e10" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/../Global.gs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../Main.gs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/../SelectionDates.html" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$/.." value="claude/sleepy-hypatia-u51xon" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Azazelle-dev&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Azazelle-dev/Cinemed.git&quot;,
+    &quot;accountId&quot;: &quot;3ef18d61-647a-4780-a489-080ed2a932ba&quot;
+  }
+}</component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
+  </component>
+  <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.0001387683260483" />
+      <entry key="MS500" value="1.5187160411795284" />
+      <entry key="S2" value="5.780526003834038" />
+      <entry key="S5" value="10.76331976025981" />
+      <entry key="S10" value="14.331365629885333" />
+      <entry key="S30" value="20.584062070545436" />
+      <entry key="S60" value="25.84273031267058" />
+      <entry key="M2" value="33.41368977621288" />
+      <entry key="M5" value="54.910682072453206" />
+      <entry key="M10" value="85.05553352287569" />
+      <entry key="M15" value="109.76585795799957" />
+      <entry key="M30" value="173.12904498741443" />
+      <entry key="H1" value="266.5504180535018" />
+      <entry key="H2" value="364.29614221507694" />
+      <entry key="H4" value="439.30237337692205" />
+      <entry key="D1" value="522.4920521296033" />
+      <entry key="W1" value="539.1471468927309" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="2.1199475038708617E-90" />
+      <entry key="S5" value="1.350610254148411E-36" />
+      <entry key="S10" value="1.162157585763827E-18" />
+      <entry key="S30" value="1.0513686116227655E-6" />
+      <entry key="S60" value="0.001025362673215074" />
+      <entry key="M2" value="0.032021284690266195" />
+      <entry key="M5" value="0.252450073055961" />
+      <entry key="M10" value="0.5024440994339181" />
+      <entry key="M15" value="0.6320117709445439" />
+      <entry key="M30" value="0.7949916797957962" />
+      <entry key="H1" value="0.8916230592553083" />
+      <entry key="H2" value="0.94425794106023" />
+      <entry key="H4" value="0.971729355870364" />
+      <entry key="D1" value="0.9952317454336073" />
+      <entry key="W1" value="0.9993174246378614" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.9727901080007415" />
+      <entry key="MS500" value="1.5050321185640982" />
+      <entry key="S2" value="5.753617249243603" />
+      <entry key="S5" value="10.742214808113964" />
+      <entry key="S10" value="14.31743428388802" />
+      <entry key="S30" value="20.57767520397424" />
+      <entry key="S60" value="25.839856488548016" />
+      <entry key="M2" value="33.443022929705556" />
+      <entry key="M5" value="55.160747180434136" />
+      <entry key="M10" value="85.55596866175536" />
+      <entry key="M15" value="110.39615035432689" />
+      <entry key="M30" value="173.92273798406987" />
+      <entry key="H1" value="267.44107980560244" />
+      <entry key="H2" value="365.23975778598964" />
+      <entry key="H4" value="440.2737198917521" />
+      <entry key="D1" value="523.4872087361553" />
+      <entry key="W1" value="540.1464532602886" />
+    </decayedShown>
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 1,
+  &quot;fromUser&quot;: false
+}</component>
+  <component name="ProjectId" id="3J8mM13wexhD01rfoi1fsGNkSVo" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "cidr.known.project.marker": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "git-widget-placeholder": "main",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "settings.editor.selected.configurable": "preferences.lookFeel"
+  }
+}]]></component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="f758e184-c394-42d4-ae6f-a2cc21785e10" name="Changes" comment="" />
+      <created>1789051017722</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1789051017722</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="UnityCheckinConfiguration" checkUnsavedScenes="true" />
+  <component name="UnityProjectConfiguration" hasMinimizedUI="false" />
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="FILTERS">
+                <map>
+                  <entry key="branch">
+                    <value>
+                      <list>
+                        <option value="origin/claude/sleepy-hypatia-u51xon" />
+                      </list>
+                    </value>
+                  </entry>
+                </map>
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <option name="CLEAR_INITIAL_COMMIT_MESSAGE" value="true" />
+    <MESSAGE value="génération des planning ajouter" />
+    <MESSAGE value="changement de place du html" />
+    <option name="LAST_COMMIT_MESSAGE" value="changement de place du html" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.OperationCanceledException" breakIfHandledByOtherCode="false" displayValue="System.OperationCanceledException" />
+          <option name="timeStamp" value="1" />
+        </breakpoint>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.Threading.Tasks.TaskCanceledException" breakIfHandledByOtherCode="false" displayValue="System.Threading.Tasks.TaskCanceledException" />
+          <option name="timeStamp" value="2" />
+        </breakpoint>
+        <breakpoint enabled="true" type="DotNet_Exception_Breakpoints">
+          <properties exception="System.Threading.ThreadAbortException" breakIfHandledByOtherCode="false" displayValue="System.Threading.ThreadAbortException" />
+          <option name="timeStamp" value="3" />
+        </breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
+  </component>
+  <component name="XSLT-Support.FileAssociations.UIState">
+    <expand />
+    <select />
+  </component>
+</project>
