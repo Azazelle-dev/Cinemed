@@ -1,8 +1,8 @@
 /**
- * Common.gs — Logique métier : lecture des tables de délais, collecte des
- * mouvements confirmés (arrivées + départs séparément), écriture non
- * destructive dans les onglets journaliers, mise en forme.
- * Aucun déclencheur ici, uniquement des fonctions appelées par Main.gs.
+ * Common.gs — Logique métier : tables de délais, dates, collecte des mouvements,
+ * écriture non destructive dans les onglets journaliers, mise en forme (plannings
+ * et sources), suppression. Aucun déclencheur ici, uniquement des fonctions
+ * appelées par Main.gs.
  */
 
 /**
@@ -13,8 +13,21 @@
  */
 function nomTrajetInverse(trajet) {
   const parties = trajet.split(">");
-  if (parties.length !== 2) return null; // format inattendu, on ne devine pas
+  if (parties.length !== 2) return null;
   return parties[1] + ">" + parties[0];
+}
+
+/**
+ * Extrait le nom de la gare/aéroport d'un trajet, quel que soit son sens.
+ * ex: "SDF>Corum" → "SDF", "Corum>SDF" → "SDF"
+ * @param {string} trajet
+ * @return {string}
+ */
+function extraireLieu(trajet) {
+  if (!trajet) return "";
+  const parties = trajet.split(">");
+  if (parties.length !== 2) return trajet;
+  return parties[0] === "Corum" ? parties[1] : parties[0];
 }
 
 /**
@@ -41,28 +54,12 @@ function combinerDateEtHeure(date, heure) {
 }
 
 /**
- * Convertit un objet Date en texte "HH:mm" pur (ex: "15:05"). On écrit ce texte
- * directement dans la cellule, jamais l'objet Date complet, pour éviter tout
- * risque que Sheets affiche la date en plus de l'heure.
+ * Convertit un objet Date en texte "HH:mm" pur (ex: "15:05").
  * @param {Date} date
  * @return {string}
  */
 function formatHeureAffichage(date) {
   return Utilities.formatDate(date, Session.getScriptTimeZone(), "HH:mm");
-}
-
-/**
- * Préfixe une chaîne d'une apostrophe pour forcer Sheets à la garder en texte
- * littéral à l'écriture (setValue/setValues). Même une cellule au format "@"
- * peut voir une valeur qui ressemble à une heure réinterprétée en date/heure :
- * c'est le même mécanisme de détection qu'une saisie manuelle, appliqué aussi
- * via l'API. L'apostrophe n'apparaît jamais à l'affichage ni dans un getValue()
- * ultérieur — à utiliser uniquement au moment d'écrire, jamais pour les comparaisons.
- * @param {string} texte
- * @return {string}
- */
-function forcerTexteLitteral(texte) {
-  return "'" + texte;
 }
 
 /**
@@ -78,7 +75,7 @@ function dureeEnMillisecondes(valeur) {
     return valeur.getUTCHours() * 3600000 + valeur.getUTCMinutes() * 60000 + valeur.getUTCSeconds() * 1000;
   }
   if (typeof valeur === "number") {
-    return Math.round(valeur * 24 * 60 * 60 * 1000); // au cas où la cellule est une fraction de jour
+    return Math.round(valeur * 24 * 60 * 60 * 1000);
   }
   return 0;
 }
@@ -91,12 +88,12 @@ function obtenirTableDelaisArrivee() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
   const derniereLigne = feuille.getLastRow();
   if (derniereLigne < 2) return {};
-  const valeurs = feuille.getRange(2, 1, derniereLigne - 1, 2).getValues(); // colonnes A et B
+  const valeurs = feuille.getRange(2, 1, derniereLigne - 1, 2).getValues();
 
   const table = {};
   valeurs.forEach(ligne => {
     const trajet = ligne[0];
-    if (trajet) table[trajet] = dureeEnMillisecondes(ligne[1]);
+    if (trajet) table[trajet.toString().trim()] = dureeEnMillisecondes(ligne[1]);
   });
   return table;
 }
@@ -109,20 +106,19 @@ function obtenirTableDelaisDepart() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
   const derniereLigne = feuille.getLastRow();
   if (derniereLigne < 2) return {};
-  const valeurs = feuille.getRange(2, 4, derniereLigne - 1, 2).getValues(); // colonnes D et E
+  const valeurs = feuille.getRange(2, 4, derniereLigne - 1, 2).getValues();
 
   const table = {};
   valeurs.forEach(ligne => {
     const trajet = ligne[0];
-    if (trajet) table[trajet] = dureeEnMillisecondes(ligne[1]);
+    if (trajet) table[trajet.toString().trim()] = dureeEnMillisecondes(ligne[1]);
   });
   return table;
 }
 
 /**
  * Déduit la liste des dates disponibles en scannant DateArrivée dans ARRIVEES et
- * DateDépart dans DEPARTS — il n'y a plus de liste de dates dédiée dans Paramètres.
- * Toute date qui apparaît dans l'une de ces deux colonnes devient une date valide.
+ * DateDépart dans DEPARTS — il n'y a pas de liste de dates dédiée dans Paramètres.
  * @return {Date[]} dates triées chronologiquement
  */
 function obtenirDatesDisponibles() {
@@ -156,7 +152,7 @@ function ajouterDatesDepuisFeuille(nomOnglet, nomColonneDate, cles) {
 }
 
 /**
- * Convertit une date en nom d'onglet journalier attendu, ex: "VENDREDI 17".
+ * Convertit une date en nom d'onglet journalier attendu, ex: "VENDREDI 16".
  * @param {Date} date
  * @return {string}
  */
@@ -166,9 +162,54 @@ function nomOngletPourDate(date) {
 }
 
 /**
+ * Colore les lignes de ARRIVEES/DEPARTS par blocs consécutifs partageant la même
+ * date, en alternant deux couleurs à chaque changement — pour repérer un jour du
+ * suivant d'un coup d'œil. Suppose que les lignes sont déjà groupées par date
+ * (lignes consécutives) ; si ce n'est plus le cas un jour, le bloc de couleur se
+ * casserait à cet endroit, sans que ce soit un bug.
+ * @param {string} nomOnglet
+ * @param {string} nomColonneDate
+ */
+function colorerBlocsParDate(nomOnglet, nomColonneDate) {
+  const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+  const derniereLigne = feuille.getLastRow();
+  const derniereColonne = feuille.getLastColumn();
+  if (derniereLigne < 2) return;
+
+  const donnees = feuille.getRange(1, 1, derniereLigne, derniereColonne).getValues();
+  const enTetes = donnees[0];
+  const idxDate = enTetes.indexOf(nomColonneDate);
+  if (idxDate === -1) return;
+
+  const couleurs = ["#ffffff", "#f3f3f3"]; // blanc / gris clair — à ajuster au goût
+  let indexCouleur = 0;
+  let cleDatePrecedente = null;
+
+  for (let i = 1; i < donnees.length; i++) {
+    const valeurDate = donnees[i][idxDate];
+    const cleDate = (valeurDate instanceof Date) ? formatDateCle(valeurDate) : String(valeurDate);
+
+    if (cleDate !== cleDatePrecedente) {
+      indexCouleur = 1 - indexCouleur; // bascule à chaque changement de date
+      cleDatePrecedente = cleDate;
+    }
+
+    feuille.getRange(i + 1, 1, 1, derniereColonne).setBackground(couleurs[indexCouleur]);
+  }
+}
+
+/**
+ * Applique colorerBlocsParDate aux deux onglets sources, à chaque génération.
+ */
+function colorerBlocsDeDatesDesSources() {
+  colorerBlocsParDate(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE);
+  colorerBlocsParDate(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART);
+}
+
+/**
  * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
  * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu. Dans ce
- * cas heurePickup reste une chaîne vide en attendant que le trajet soit renseigné,
+ * cas heurePickup/lieuPickup restent vides en attendant que le trajet soit renseigné,
  * pour que la personne apparaisse quand même dans le planning du jour.
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
@@ -190,28 +231,33 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
     if (!ligne[idx.NOM]) return;
 
     const date = ligne[idx.DATE_ARRIVEE];
-    if (!(date instanceof Date)) return; // pas de date = rien à planifier, on ignore
+    if (!(date instanceof Date)) return;
 
     const cleDate = formatDateCle(date);
-    if (!datesAutorisees.has(cleDate)) return; // date hors de Paramètres, on ignore
+    if (!datesAutorisees.has(cleDate)) return;
 
-    const mode = ligne[idx.MODE_ARRIVEE];
-    let heurePickup = ""; // vide tant que le trajet n'est pas confirmé
+    const heureEvenementBrute = formatHeureAffichage(combinerDateEtHeure(date, ligne[idx.HEURE_ARRIVEE]));
+    const mode = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
+
+    let heurePickup = "";
+    let lieuPickup = "";
 
     if (tableDelaisArrivee.hasOwnProperty(mode)) {
       const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_ARRIVEE]);
       heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisArrivee[mode]));
+      lieuPickup = extraireLieu(mode);
     }
 
     mouvements.push({
       date: date,
-      type: "Arrivée",
       nom: ligne[idx.NOM],
       prenom: ligne[idx.PRENOM],
+      fonction: ligne[idx.FONCTION],
       telephone: ligne[idx.TELEPHONE],
-      hotel: ligne[idx.HOTEL],
-      trajet: mode || "", // affiché tel quel même si non reconnu, ou vide si jamais rempli
-      heurePickup: heurePickup
+      heurePickup: heurePickup,
+      lieuPickup: lieuPickup,
+      lieuDepose: ligne[idx.HOTEL],
+      heureEvenement: heureEvenementBrute
     });
   });
 
@@ -222,8 +268,8 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
  * Parcourt DEPARTS et retourne toute personne dont DateDépart tombe dans
  * datesAutorisees — même si ModeDépart est encore vide ou non reconnu (mêmes
  * règles que collecterArrivees). Calcule aussi heureRetourCorum via la table
- * "Arrivée" (trajet inversé) quand le trajet est reconnu — valeur gardée en
- * mémoire pour un usage futur, jamais écrite dans un onglet.
+ * "Arrivée" (trajet inversé) quand le trajet est reconnu — usage interne réservé
+ * à une future optimisation, jamais écrit dans un onglet.
  * @param {Object<string, number>} tableDelaisDepart
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees
@@ -250,16 +296,18 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
-    const mode = ligne[idx.MODE_DEPART];
+    const heureEvenementBrute = formatHeureAffichage(combinerDateEtHeure(date, ligne[idx.HEURE_DEPART]));
+    const mode = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
+
     let heurePickup = "";
+    let lieuDepose = "";
     let heureRetourCorum = "";
 
     if (tableDelaisDepart.hasOwnProperty(mode)) {
       const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_DEPART]);
       heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisDepart[mode]));
+      lieuDepose = extraireLieu(mode);
 
-      // Heure de retour au Corum : le chauffeur dépose la personne à heureEvenement,
-      // puis revient au Corum en utilisant le délai du trajet inversé (table A/B)
       const trajetInverse = nomTrajetInverse(mode);
       if (trajetInverse && tableDelaisArrivee.hasOwnProperty(trajetInverse)) {
         const retour = new Date(heureEvenement.getTime() + tableDelaisArrivee[trajetInverse]);
@@ -269,14 +317,15 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
 
     mouvements.push({
       date: date,
-      type: "Départ",
       nom: ligne[idx.NOM],
       prenom: ligne[idx.PRENOM],
+      fonction: ligne[idx.FONCTION],
       telephone: ligne[idx.TELEPHONE],
-      hotel: ligne[idx.HOTEL],
-      trajet: mode || "",
       heurePickup: heurePickup,
-      heureRetourCorum: heureRetourCorum
+      lieuPickup: ligne[idx.HOTEL],
+      lieuDepose: lieuDepose,
+      heureEvenement: heureEvenementBrute,
+      heureRetourCorum: heureRetourCorum // interne uniquement, jamais écrite dans un onglet
     });
   });
 
@@ -340,9 +389,12 @@ function formaterOnglet(feuille) {
  * Écrit une liste de mouvements dans l'onglet journalier correspondant. La ligne
  * à insérer est construite par position d'en-tête retrouvée dynamiquement (pas
  * par ordre fixe), pour rester correcte même si l'ordre des colonnes du modèle
- * Planning Source change. Ajoute les mouvements absents, met à jour Heure de
- * pick up / Trajet pour ceux déjà présents, ne touche jamais à Chauffeurs
- * (assignation manuelle), puis trie par ordre chronologique.
+ * Planning Source change. Ajoute les mouvements absents, met à jour Heure Pick up /
+ * Lieu Pick up / Lieu de dépose pour ceux déjà présents, ne touche jamais aux
+ * colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut, Pays, Langue), puis trie
+ * par ordre chronologique. La clé de dédoublonnage est Nom|Prénom|Heure départ
+ * (l'heure brute de l'événement), qui distingue naturellement une arrivée d'un
+ * départ pour une même personne.
  * @param {string} nomOnglet
  * @param {Array<Object>} mouvements
  */
@@ -355,27 +407,19 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 
   const idxNom         = enTetes.indexOf("Nom") + 1;
   const idxPrenom      = enTetes.indexOf("Prénom") + 1;
-  const idxHeurePickup = enTetes.indexOf("Heure de pick up") + 1;
-  const idxType        = enTetes.indexOf("Arrivée/Départ") + 1;
-  const idxTrajet      = enTetes.indexOf("Trajet") + 1;
+  const idxFonction    = enTetes.indexOf("Fonction") + 1;
   const idxTelephone   = enTetes.indexOf("Téléphone") + 1;
-  const idxHotel       = enTetes.indexOf("Hôtel") + 1;
-  // Pas d'index pour "Heure retour Corum" : cette valeur n'est jamais écrite dans le sheet
+  const idxHeurePickup = enTetes.indexOf("Heure Pick up") + 1;
+  const idxLieuPickup  = enTetes.indexOf("Lieu Pick up") + 1;
+  const idxLieuDepose  = enTetes.indexOf("Lieu de dépose") + 1;
+  const idxHeureDepart = enTetes.indexOf("Heure départ") + 1;
 
-  // Sans ça, Sheets réinterprète une chaîne comme "15:05" écrite via setValue comme
-  // une heure/date (même comportement qu'une saisie manuelle). Le format "@" (texte
-  // brut) réduit ce risque, combiné à forcerTexteLitteral() à l'écriture.
-  if (idxHeurePickup > 0) {
-    feuille.getRange(1, idxHeurePickup, feuille.getMaxRows(), 1).setNumberFormat("@");
-  }
-
-  // Lignes déjà présentes (clé Nom|Prénom|Type → numéro de ligne)
   const derniereLigneAvant = feuille.getLastRow();
   const dejaPresents = new Map();
   if (derniereLigneAvant > 1) {
     const existants = feuille.getRange(2, 1, derniereLigneAvant - 1, derniereColonne).getValues();
     existants.forEach((ligne, i) => {
-      const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1] + "|" + ligne[idxType - 1];
+      const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1] + "|" + ligne[idxHeureDepart - 1];
       dejaPresents.set(cle, i + 2);
     });
   }
@@ -384,29 +428,31 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   let quelqueChoseAChange = false;
 
   mouvements.forEach(mvt => {
-    const cle = mvt.nom + "|" + mvt.prenom + "|" + mvt.type;
+    const cle = mvt.nom + "|" + mvt.prenom + "|" + mvt.heureEvenement;
 
     if (dejaPresents.has(cle)) {
       const ligneExistante = dejaPresents.get(cle);
-      const heureActuelle = feuille.getRange(ligneExistante, idxHeurePickup).getValue();
-      const trajetActuel  = feuille.getRange(ligneExistante, idxTrajet).getValue();
+      const heureActuelle     = feuille.getRange(ligneExistante, idxHeurePickup).getValue();
+      const lieuPickupActuel  = feuille.getRange(ligneExistante, idxLieuPickup).getValue();
+      const lieuDeposeActuel  = feuille.getRange(ligneExistante, idxLieuDepose).getValue();
 
-      if (heureActuelle !== mvt.heurePickup || trajetActuel !== mvt.trajet) {
-        feuille.getRange(ligneExistante, idxHeurePickup).setValue(forcerTexteLitteral(mvt.heurePickup));
-        feuille.getRange(ligneExistante, idxTrajet).setValue(mvt.trajet);
+      if (heureActuelle !== mvt.heurePickup || lieuPickupActuel !== mvt.lieuPickup || lieuDeposeActuel !== mvt.lieuDepose) {
+        feuille.getRange(ligneExistante, idxHeurePickup).setValue(mvt.heurePickup);
+        feuille.getRange(ligneExistante, idxLieuPickup).setValue(mvt.lieuPickup);
+        feuille.getRange(ligneExistante, idxLieuDepose).setValue(mvt.lieuDepose);
         quelqueChoseAChange = true;
       }
     } else {
       const ligne = new Array(derniereColonne).fill("");
       ligne[idxNom - 1]         = mvt.nom;
       ligne[idxPrenom - 1]      = mvt.prenom;
-      ligne[idxHeurePickup - 1] = forcerTexteLitteral(mvt.heurePickup);
-      ligne[idxType - 1]        = mvt.type;
-      ligne[idxTrajet - 1]      = mvt.trajet;
+      ligne[idxFonction - 1]    = mvt.fonction;
       ligne[idxTelephone - 1]   = mvt.telephone;
-      ligne[idxHotel - 1]       = mvt.hotel;
-      // "heureRetourCorum" existe sur mvt mais n'est volontairement jamais écrit dans le sheet
-      // Chauffeurs (idxChauffeurs) reste vide : assignation manuelle
+      ligne[idxHeurePickup - 1] = mvt.heurePickup;
+      ligne[idxLieuPickup - 1]  = mvt.lieuPickup;
+      ligne[idxLieuDepose - 1]  = mvt.lieuDepose;
+      ligne[idxHeureDepart - 1] = mvt.heureEvenement;
+      // Chauffeur, Nb, Film/Projet, Statut, Pays, Langue restent vides (pas de source / manuel)
       nouvellesLignes.push(ligne);
     }
   });
@@ -429,18 +475,17 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 }
 
 /**
- * Orchestration : lit les deux tables de délais une seule fois chacune, collecte
- * arrivées et départs avec leur table respective, puis écrit dans les onglets
- * concernés. Un onglet n'est créé (copie de Planning Source) que pour une date
- * ayant au moins une personne — aucune date sans personne n'a d'onglet vide.
+ * Orchestration : colore les sources par blocs de dates, lit les deux tables de
+ * délais une seule fois chacune, collecte arrivées et départs avec leur table
+ * respective, puis écrit dans les onglets concernés. Un onglet n'est créé (copie
+ * de Planning Source) que pour une date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
+  colorerBlocsDeDatesDesSources(); // mise en forme des sources à chaque génération
+
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
 
-  // Collecte des mouvements confirmés, chaque source avec sa propre table de délais.
-  // Aucune pré-création d'onglet ici : un onglet n'apparaît que via ecrireMouvementsDansOnglet
-  // → assurerOngletExiste, donc seulement pour une date ayant au moins une personne.
   const tableDelaisArrivee = obtenirTableDelaisArrivee();
   const tableDelaisDepart = obtenirTableDelaisDepart();
   const clesAutorisees = new Set(dates.map(formatDateCle));

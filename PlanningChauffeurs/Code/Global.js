@@ -10,10 +10,11 @@ const Global = {
   ONGLET_DEPARTS: "DEPARTS",
   ONGLET_PLANNING_SOURCE: "Planning Source",
 
-  // Colonnes utiles de la liste des arrivées (A, B, D, E, F, G + L — on ignore Fonction en C)
+  // Colonnes utiles de la liste des arrivées : A à G + L
   COLONNES_ARRIVEES: {
     NOM: "Nom",
     PRENOM: "Prénom",
+    FONCTION: "Fonction",
     TELEPHONE: "Téléphone",
     DATE_ARRIVEE: "DateArrivée",
     HEURE_ARRIVEE: "HeureArrivée",
@@ -21,10 +22,11 @@ const Global = {
     HOTEL: "NomHotel"
   },
 
-  // Colonnes utiles de la liste des départs (A, B, D + H,I,J + L — on ignore Fonction en C)
+  // Colonnes utiles de la liste des départs : A, B, C, D, H, I, J, L
   COLONNES_DEPARTS: {
     NOM: "Nom",
     PRENOM: "Prénom",
+    FONCTION: "Fonction",
     TELEPHONE: "Téléphone",
     DATE_DEPART: "DateDépart",
     HEURE_DEPART: "HeureDépart",
