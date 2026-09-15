@@ -147,8 +147,10 @@ function nomOngletPourDate(date) {
 }
 
 /**
- * Parcourt ARRIVEES et retourne les mouvements confirmés dont ModeArrivée est
- * une clé connue de tableDelaisArrivee et dont DateArrivée tombe dans datesAutorisees.
+ * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
+ * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu. Dans ce
+ * cas heurePickup reste une chaîne vide en attendant que le trajet soit renseigné,
+ * pour que la personne apparaisse quand même dans le planning du jour.
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
  * @return {Array<Object>} mouvements
@@ -168,15 +170,19 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
   donnees.slice(1).forEach(ligne => {
     if (!ligne[idx.NOM]) return;
 
-    const mode = ligne[idx.MODE_ARRIVEE];
     const date = ligne[idx.DATE_ARRIVEE];
-    if (!tableDelaisArrivee.hasOwnProperty(mode) || !(date instanceof Date)) return;
+    if (!(date instanceof Date)) return; // pas de date = rien à planifier, on ignore
 
     const cleDate = formatDateCle(date);
-    if (!datesAutorisees.has(cleDate)) return;
+    if (!datesAutorisees.has(cleDate)) return; // date hors de Paramètres, on ignore
 
-    const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_ARRIVEE]);
-    const heurePickup = new Date(heureEvenement.getTime() - tableDelaisArrivee[mode]);
+    const mode = ligne[idx.MODE_ARRIVEE];
+    let heurePickup = ""; // vide tant que le trajet n'est pas confirmé
+
+    if (tableDelaisArrivee.hasOwnProperty(mode)) {
+      const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_ARRIVEE]);
+      heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisArrivee[mode]));
+    }
 
     mouvements.push({
       date: date,
@@ -185,8 +191,8 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
       prenom: ligne[idx.PRENOM],
       telephone: ligne[idx.TELEPHONE],
       hotel: ligne[idx.HOTEL],
-      trajet: mode,
-      heurePickup: formatHeureAffichage(heurePickup)
+      trajet: mode || "", // affiché tel quel même si non reconnu, ou vide si jamais rempli
+      heurePickup: heurePickup
     });
   });
 
@@ -194,10 +200,11 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
 }
 
 /**
- * Parcourt DEPARTS et retourne les mouvements confirmés dont ModeDépart est une
- * clé connue de tableDelaisDepart et dont DateDépart tombe dans datesAutorisees.
- * Calcule aussi heureRetourCorum via la table "Arrivée" (trajet inversé) — valeur
- * gardée en mémoire pour un usage futur, jamais écrite dans un onglet.
+ * Parcourt DEPARTS et retourne toute personne dont DateDépart tombe dans
+ * datesAutorisees — même si ModeDépart est encore vide ou non reconnu (mêmes
+ * règles que collecterArrivees). Calcule aussi heureRetourCorum via la table
+ * "Arrivée" (trajet inversé) quand le trajet est reconnu — valeur gardée en
+ * mémoire pour un usage futur, jamais écrite dans un onglet.
  * @param {Object<string, number>} tableDelaisDepart
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees
@@ -218,23 +225,27 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
   donnees.slice(1).forEach(ligne => {
     if (!ligne[idx.NOM]) return;
 
-    const mode = ligne[idx.MODE_DEPART];
     const date = ligne[idx.DATE_DEPART];
-    if (!tableDelaisDepart.hasOwnProperty(mode) || !(date instanceof Date)) return;
+    if (!(date instanceof Date)) return;
 
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
-    const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_DEPART]);
-    const heurePickup = new Date(heureEvenement.getTime() - tableDelaisDepart[mode]);
-
-    // Heure de retour au Corum : le chauffeur dépose la personne à heureEvenement,
-    // puis revient au Corum en utilisant le délai du trajet inversé (table A/B)
+    const mode = ligne[idx.MODE_DEPART];
+    let heurePickup = "";
     let heureRetourCorum = "";
-    const trajetInverse = nomTrajetInverse(mode);
-    if (trajetInverse && tableDelaisArrivee.hasOwnProperty(trajetInverse)) {
-      const retour = new Date(heureEvenement.getTime() + tableDelaisArrivee[trajetInverse]);
-      heureRetourCorum = formatHeureAffichage(retour);
+
+    if (tableDelaisDepart.hasOwnProperty(mode)) {
+      const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_DEPART]);
+      heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisDepart[mode]));
+
+      // Heure de retour au Corum : le chauffeur dépose la personne à heureEvenement,
+      // puis revient au Corum en utilisant le délai du trajet inversé (table A/B)
+      const trajetInverse = nomTrajetInverse(mode);
+      if (trajetInverse && tableDelaisArrivee.hasOwnProperty(trajetInverse)) {
+        const retour = new Date(heureEvenement.getTime() + tableDelaisArrivee[trajetInverse]);
+        heureRetourCorum = formatHeureAffichage(retour);
+      }
     }
 
     mouvements.push({
@@ -244,8 +255,8 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
       prenom: ligne[idx.PRENOM],
       telephone: ligne[idx.TELEPHONE],
       hotel: ligne[idx.HOTEL],
-      trajet: mode,
-      heurePickup: formatHeureAffichage(heurePickup),
+      trajet: mode || "",
+      heurePickup: heurePickup,
       heureRetourCorum: heureRetourCorum
     });
   });
@@ -399,18 +410,18 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 }
 
 /**
- * Orchestration : crée un onglet pour chaque date ciblée (même sans mouvement
- * confirmé), lit les deux tables de délais une seule fois chacune, puis traite
- * arrivées et départs avec leur table respective.
+ * Orchestration : lit les deux tables de délais une seule fois chacune, collecte
+ * arrivées et départs avec leur table respective, puis écrit dans les onglets
+ * concernés. Un onglet n'est créé (copie de Planning Source) que pour une date
+ * ayant au moins une personne — aucune date sans personne n'a d'onglet vide.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
 
-  // 1. Un onglet pour chaque date, même sans aucun mouvement confirmé
-  dates.forEach(date => assurerOngletExiste(nomOngletPourDate(date)));
-
-  // 2. Collecte des mouvements confirmés, chaque source avec sa propre table de délais
+  // Collecte des mouvements confirmés, chaque source avec sa propre table de délais.
+  // Aucune pré-création d'onglet ici : un onglet n'apparaît que via ecrireMouvementsDansOnglet
+  // → assurerOngletExiste, donc seulement pour une date ayant au moins une personne.
   const tableDelaisArrivee = obtenirTableDelaisArrivee();
   const tableDelaisDepart = obtenirTableDelaisDepart();
   const clesAutorisees = new Set(dates.map(formatDateCle));
