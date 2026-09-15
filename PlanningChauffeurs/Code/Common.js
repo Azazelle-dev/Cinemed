@@ -236,14 +236,16 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
-    const heureEvenementBrute = formatHeureAffichage(combinerDateEtHeure(date, ligne[idx.HEURE_ARRIVEE]));
+    const heureArrivee = ligne[idx.HEURE_ARRIVEE];
+    const heureRenseignee = heureArrivee instanceof Date;
+    const heureEvenementBrute = heureRenseignee ? formatHeureAffichage(combinerDateEtHeure(date, heureArrivee)) : "";
     const mode = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
 
     let heurePickup = "";
     let lieuPickup = "";
 
-    if (tableDelaisArrivee.hasOwnProperty(mode)) {
-      const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_ARRIVEE]);
+    if (heureRenseignee && tableDelaisArrivee.hasOwnProperty(mode)) {
+      const heureEvenement = combinerDateEtHeure(date, heureArrivee);
       heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisArrivee[mode]));
       lieuPickup = extraireLieu(mode);
     }
@@ -296,15 +298,17 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
-    const heureEvenementBrute = formatHeureAffichage(combinerDateEtHeure(date, ligne[idx.HEURE_DEPART]));
+    const heureDepart = ligne[idx.HEURE_DEPART];
+    const heureRenseignee = heureDepart instanceof Date;
+    const heureEvenementBrute = heureRenseignee ? formatHeureAffichage(combinerDateEtHeure(date, heureDepart)) : "";
     const mode = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
 
     let heurePickup = "";
     let lieuDepose = "";
     let heureRetourCorum = "";
 
-    if (tableDelaisDepart.hasOwnProperty(mode)) {
-      const heureEvenement = combinerDateEtHeure(date, ligne[idx.HEURE_DEPART]);
+    if (heureRenseignee && tableDelaisDepart.hasOwnProperty(mode)) {
+      const heureEvenement = combinerDateEtHeure(date, heureDepart);
       heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisDepart[mode]));
       lieuDepose = extraireLieu(mode);
 
