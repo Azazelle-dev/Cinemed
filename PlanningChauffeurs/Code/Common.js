@@ -30,6 +30,53 @@ function extraireLieu(trajet) {
   return parties[0] === "Corum" ? parties[1] : parties[0];
 }
 
+const FONCTIONS_EXCEPTION_ST_ROCH = ["avant-première", "jury antigone d'or", "jury bourse d'aide"];
+
+/**
+ * Indique si une fonction fait partie des exceptions à la règle d'exclusion
+ * Gare Saint-Roch (comparaison insensible à la casse/aux espaces superflus).
+ * @param {string} fonction
+ * @return {boolean}
+ */
+function estFonctionExceptionStRoch(fonction) {
+  if (!fonction) return false;
+  return FONCTIONS_EXCEPTION_ST_ROCH.includes(fonction.toString().trim().toLowerCase());
+}
+
+/**
+ * @param {Date} date
+ * @return {number} minutes écoulées depuis minuit
+ */
+function minutesDepuisMinuit(date) {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+/**
+ * Règle Gare Saint-Roch — arrivée : exclue sauf fonction exception ou arrivée après 21h.
+ * @param {string} trajet
+ * @param {Date} heureEvenement
+ * @param {string} fonction
+ * @return {boolean}
+ */
+function estExcluStRochArrivee(trajet, heureEvenement, fonction) {
+  if (trajet !== "StRoch>Corum") return false; // pas concerné par la règle
+  if (estFonctionExceptionStRoch(fonction)) return false;
+  return minutesDepuisMinuit(heureEvenement) <= 21 * 60; // pas "après 21h" → exclue
+}
+
+/**
+ * Règle Gare Saint-Roch — départ : exclu sauf fonction exception ou départ avant 8h.
+ * @param {string} trajet
+ * @param {Date} heureEvenement
+ * @param {string} fonction
+ * @return {boolean}
+ */
+function estExcluStRochDepart(trajet, heureEvenement, fonction) {
+  if (trajet !== "Corum>St Roch") return false;
+  if (estFonctionExceptionStRoch(fonction)) return false;
+  return minutesDepuisMinuit(heureEvenement) >= 8 * 60; // pas "avant 8h" → exclu
+}
+
 /**
  * Formate une date en clé de comparaison stable ("dd/MM/yyyy").
  * @param {Date} date
@@ -210,7 +257,9 @@ function colorerBlocsDeDatesDesSources() {
  * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
  * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu. Dans ce
  * cas heurePickup/lieuPickup restent vides en attendant que le trajet soit renseigné,
- * pour que la personne apparaisse quand même dans le planning du jour.
+ * pour que la personne apparaisse quand même dans le planning du jour. Une
+ * personne dont le trajet confirmé est StRoch>Corum est retirée du résultat si
+ * la règle Gare Saint-Roch s'applique (cf. estExcluStRochArrivee).
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
  * @return {Array<Object>} mouvements
@@ -238,15 +287,19 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
 
     const heureArrivee = ligne[idx.HEURE_ARRIVEE];
     const heureRenseignee = heureArrivee instanceof Date;
-    const heureEvenementBrute = heureRenseignee ? formatHeureAffichage(combinerDateEtHeure(date, heureArrivee)) : "";
+    const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureArrivee) : null;
+    const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
     const mode = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
+
+    // Règle Gare Saint-Roch : évaluable seulement si l'heure est connue ; sinon la
+    // personne reste visible, comme pour tout trajet non encore confirmé.
+    if (heureEvenementDate && estExcluStRochArrivee(mode, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
     let lieuPickup = "";
 
     if (heureRenseignee && tableDelaisArrivee.hasOwnProperty(mode)) {
-      const heureEvenement = combinerDateEtHeure(date, heureArrivee);
-      heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisArrivee[mode]));
+      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisArrivee[mode]));
       lieuPickup = extraireLieu(mode);
     }
 
@@ -269,9 +322,11 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
 /**
  * Parcourt DEPARTS et retourne toute personne dont DateDépart tombe dans
  * datesAutorisees — même si ModeDépart est encore vide ou non reconnu (mêmes
- * règles que collecterArrivees). Calcule aussi heureRetourCorum via la table
- * "Arrivée" (trajet inversé) quand le trajet est reconnu — usage interne réservé
- * à une future optimisation, jamais écrit dans un onglet.
+ * règles que collecterArrivees, y compris la règle Gare Saint-Roch via
+ * estExcluStRochDepart pour un trajet confirmé Corum>St Roch). Calcule aussi
+ * heureRetourCorum via la table "Arrivée" (trajet inversé) quand le trajet est
+ * reconnu — usage interne réservé à une future optimisation, jamais écrit dans
+ * un onglet.
  * @param {Object<string, number>} tableDelaisDepart
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees
@@ -300,21 +355,25 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
 
     const heureDepart = ligne[idx.HEURE_DEPART];
     const heureRenseignee = heureDepart instanceof Date;
-    const heureEvenementBrute = heureRenseignee ? formatHeureAffichage(combinerDateEtHeure(date, heureDepart)) : "";
+    const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureDepart) : null;
+    const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
     const mode = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
+
+    // Règle Gare Saint-Roch : évaluable seulement si l'heure est connue ; sinon la
+    // personne reste visible, comme pour tout trajet non encore confirmé.
+    if (heureEvenementDate && estExcluStRochDepart(mode, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
     let lieuDepose = "";
     let heureRetourCorum = "";
 
     if (heureRenseignee && tableDelaisDepart.hasOwnProperty(mode)) {
-      const heureEvenement = combinerDateEtHeure(date, heureDepart);
-      heurePickup = formatHeureAffichage(new Date(heureEvenement.getTime() - tableDelaisDepart[mode]));
+      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisDepart[mode]));
       lieuDepose = extraireLieu(mode);
 
       const trajetInverse = nomTrajetInverse(mode);
       if (trajetInverse && tableDelaisArrivee.hasOwnProperty(trajetInverse)) {
-        const retour = new Date(heureEvenement.getTime() + tableDelaisArrivee[trajetInverse]);
+        const retour = new Date(heureEvenementDate.getTime() + tableDelaisArrivee[trajetInverse]);
         heureRetourCorum = formatHeureAffichage(retour);
       }
     }
