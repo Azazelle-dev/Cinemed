@@ -110,6 +110,36 @@ function formatHeureAffichage(date) {
 }
 
 /**
+ * Normalise une valeur de cellule "heure" lue via getValue() en texte "HH:mm",
+ * qu'elle soit restée une chaîne ou que Sheets l'ait réinterprétée en heure/date
+ * à l'écriture (même mécanisme qu'une saisie manuelle). Sans ça, comparer ou
+ * utiliser comme clé de dédoublonnage une valeur parfois Date, parfois string,
+ * ne matche jamais correctement — la personne réapparaît en double au lieu
+ * d'être mise à jour.
+ * @param {Date|string} valeur
+ * @return {string}
+ */
+function normaliserValeurHeure(valeur) {
+  if (valeur instanceof Date) return formatHeureAffichage(valeur);
+  return (valeur || "").toString();
+}
+
+/**
+ * Préfixe une chaîne d'une apostrophe pour forcer Sheets à la garder en texte
+ * littéral à l'écriture (setValue/setValues) : sans ça, une valeur qui
+ * ressemble à une heure (ex. "15:05") peut être réinterprétée en heure/date,
+ * comme lors d'une saisie manuelle — même sur une cellule au format "@".
+ * L'apostrophe n'apparaît jamais à l'affichage ni dans un getValue()
+ * ultérieur — à utiliser uniquement à l'écriture, jamais pour les
+ * comparaisons (normaliserValeurHeure s'en charge côté lecture).
+ * @param {string} texte
+ * @return {string}
+ */
+function forcerTexteLitteral(texte) {
+  return texte ? "'" + texte : texte;
+}
+
+/**
  * Convertit une cellule de durée (ex: 01:00:00, lue comme objet Date par Apps Script)
  * en millisecondes. Utilise les getters UTC volontairement : les cellules de durée
  * pure n'ont pas de fuseau horaire, donc passer par getHours() (heure locale du
@@ -477,12 +507,22 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   const idxLieuDepose  = enTetes.indexOf("Lieu de dépose") + 1;
   const idxHeureDepart = enTetes.indexOf("Heure départ") + 1;
 
+  // Empêche Sheets de réinterpréter une écriture future en heure/date (même
+  // mécanisme que pour une saisie manuelle) — combiné à forcerTexteLitteral()
+  // à l'écriture ci-dessous.
+  if (idxHeurePickup > 0) {
+    feuille.getRange(1, idxHeurePickup, feuille.getMaxRows(), 1).setNumberFormat("@");
+  }
+  if (idxHeureDepart > 0) {
+    feuille.getRange(1, idxHeureDepart, feuille.getMaxRows(), 1).setNumberFormat("@");
+  }
+
   const derniereLigneAvant = feuille.getLastRow();
   const dejaPresents = new Map();
   if (derniereLigneAvant > 1) {
     const existants = feuille.getRange(2, 1, derniereLigneAvant - 1, derniereColonne).getValues();
     existants.forEach((ligne, i) => {
-      const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1] + "|" + ligne[idxHeureDepart - 1];
+      const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1] + "|" + normaliserValeurHeure(ligne[idxHeureDepart - 1]);
       dejaPresents.set(cle, i + 2);
     });
   }
@@ -495,12 +535,12 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 
     if (dejaPresents.has(cle)) {
       const ligneExistante = dejaPresents.get(cle);
-      const heureActuelle     = feuille.getRange(ligneExistante, idxHeurePickup).getValue();
+      const heureActuelle     = normaliserValeurHeure(feuille.getRange(ligneExistante, idxHeurePickup).getValue());
       const lieuPickupActuel  = feuille.getRange(ligneExistante, idxLieuPickup).getValue();
       const lieuDeposeActuel  = feuille.getRange(ligneExistante, idxLieuDepose).getValue();
 
       if (heureActuelle !== mvt.heurePickup || lieuPickupActuel !== mvt.lieuPickup || lieuDeposeActuel !== mvt.lieuDepose) {
-        feuille.getRange(ligneExistante, idxHeurePickup).setValue(mvt.heurePickup);
+        feuille.getRange(ligneExistante, idxHeurePickup).setValue(forcerTexteLitteral(mvt.heurePickup));
         feuille.getRange(ligneExistante, idxLieuPickup).setValue(mvt.lieuPickup);
         feuille.getRange(ligneExistante, idxLieuDepose).setValue(mvt.lieuDepose);
         quelqueChoseAChange = true;
@@ -511,10 +551,10 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
       ligne[idxPrenom - 1]      = mvt.prenom;
       ligne[idxFonction - 1]    = mvt.fonction;
       ligne[idxTelephone - 1]   = mvt.telephone;
-      ligne[idxHeurePickup - 1] = mvt.heurePickup;
+      ligne[idxHeurePickup - 1] = forcerTexteLitteral(mvt.heurePickup);
       ligne[idxLieuPickup - 1]  = mvt.lieuPickup;
       ligne[idxLieuDepose - 1]  = mvt.lieuDepose;
-      ligne[idxHeureDepart - 1] = mvt.heureEvenement;
+      ligne[idxHeureDepart - 1] = forcerTexteLitteral(mvt.heureEvenement);
       // Chauffeur, Nb, Film/Projet, Statut, Pays, Langue restent vides (pas de source / manuel)
       nouvellesLignes.push(ligne);
     }
@@ -541,10 +581,16 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
  * Orchestration : colore les sources par blocs de dates, lit les deux tables de
  * délais une seule fois chacune, collecte arrivées et départs avec leur table
  * respective, puis écrit dans les onglets concernés. Un onglet n'est créé (copie
- * de Planning Source) que pour une date ayant au moins une personne.
+ * de Planning Source) que pour une date ayant au moins une personne. Restaure
+ * l'onglet actif de départ à la fin, quel que soit l'appelant (menu, sélection
+ * de dates, ou génération automatique sur inactivité), pour ne jamais faire
+ * sauter l'utilisateur d'onglet pendant/après une génération.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
+  const classeur = SpreadsheetApp.getActive();
+  const ongletActifAvant = classeur.getActiveSheet();
+
   colorerBlocsDeDatesDesSources(); // mise en forme des sources à chaque génération
 
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
@@ -564,6 +610,8 @@ function genererPlannings(datesCiblees) {
   });
 
   Object.keys(parOnglet).forEach(nomOnglet => ecrireMouvementsDansOnglet(nomOnglet, parOnglet[nomOnglet]));
+
+  classeur.setActiveSheet(ongletActifAvant);
 }
 
 /**
