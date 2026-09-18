@@ -483,17 +483,11 @@ function formaterOnglet(feuille) {
  * à insérer est construite par position d'en-tête retrouvée dynamiquement (pas
  * par ordre fixe), pour rester correcte même si l'ordre des colonnes du modèle
  * Planning Source change. Ajoute les mouvements absents, met à jour Heure Pick up /
- * Lieu Pick up / Lieu de dépose / Heure départ pour ceux déjà présents, ne touche
- * jamais aux colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut, Pays, Langue),
- * puis trie par ordre chronologique.
- *
- * La clé de dédoublonnage est Nom|Prénom (pas l'heure de l'événement) : toute
- * correction de trajet ou d'heure sur une personne déjà présente met donc à
- * jour sa ligne existante, sans jamais en créer une nouvelle. Si une même
- * personne a exceptionnellement une arrivée ET un départ le même jour, les
- * lignes existantes portant son nom sont consommées dans l'ordre où les
- * mouvements sont collectés (arrivées avant départs) ; au-delà, une ligne est
- * créée.
+ * Lieu Pick up / Lieu de dépose pour ceux déjà présents, ne touche jamais aux
+ * colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut, Pays, Langue), puis trie
+ * par ordre chronologique. La clé de dédoublonnage est Nom|Prénom|Heure départ
+ * (l'heure brute de l'événement), qui distingue naturellement une arrivée d'un
+ * départ pour une même personne.
  * @param {string} nomOnglet
  * @param {Array<Object>} mouvements
  */
@@ -524,13 +518,12 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   }
 
   const derniereLigneAvant = feuille.getLastRow();
-  const dejaPresents = new Map(); // Nom|Prénom -> file des numéros de ligne existants pour ce nom
+  const dejaPresents = new Map();
   if (derniereLigneAvant > 1) {
     const existants = feuille.getRange(2, 1, derniereLigneAvant - 1, derniereColonne).getValues();
     existants.forEach((ligne, i) => {
-      const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1];
-      if (!dejaPresents.has(cle)) dejaPresents.set(cle, []);
-      dejaPresents.get(cle).push(i + 2);
+      const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1] + "|" + normaliserValeurHeure(ligne[idxHeureDepart - 1]);
+      dejaPresents.set(cle, i + 2);
     });
   }
 
@@ -538,22 +531,18 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   let quelqueChoseAChange = false;
 
   mouvements.forEach(mvt => {
-    const cle = mvt.nom + "|" + mvt.prenom;
-    const lignesDisponibles = dejaPresents.get(cle);
+    const cle = mvt.nom + "|" + mvt.prenom + "|" + mvt.heureEvenement;
 
-    if (lignesDisponibles && lignesDisponibles.length > 0) {
-      const ligneExistante = lignesDisponibles.shift();
-      const heureActuelle      = normaliserValeurHeure(feuille.getRange(ligneExistante, idxHeurePickup).getValue());
-      const lieuPickupActuel   = feuille.getRange(ligneExistante, idxLieuPickup).getValue();
-      const lieuDeposeActuel   = feuille.getRange(ligneExistante, idxLieuDepose).getValue();
-      const heureDepartActuel  = normaliserValeurHeure(feuille.getRange(ligneExistante, idxHeureDepart).getValue());
+    if (dejaPresents.has(cle)) {
+      const ligneExistante = dejaPresents.get(cle);
+      const heureActuelle     = normaliserValeurHeure(feuille.getRange(ligneExistante, idxHeurePickup).getValue());
+      const lieuPickupActuel  = feuille.getRange(ligneExistante, idxLieuPickup).getValue();
+      const lieuDeposeActuel  = feuille.getRange(ligneExistante, idxLieuDepose).getValue();
 
-      if (heureActuelle !== mvt.heurePickup || lieuPickupActuel !== mvt.lieuPickup
-          || lieuDeposeActuel !== mvt.lieuDepose || heureDepartActuel !== mvt.heureEvenement) {
+      if (heureActuelle !== mvt.heurePickup || lieuPickupActuel !== mvt.lieuPickup || lieuDeposeActuel !== mvt.lieuDepose) {
         feuille.getRange(ligneExistante, idxHeurePickup).setValue(forcerTexteLitteral(mvt.heurePickup));
         feuille.getRange(ligneExistante, idxLieuPickup).setValue(mvt.lieuPickup);
         feuille.getRange(ligneExistante, idxLieuDepose).setValue(mvt.lieuDepose);
-        feuille.getRange(ligneExistante, idxHeureDepart).setValue(forcerTexteLitteral(mvt.heureEvenement));
         quelqueChoseAChange = true;
       }
     } else {
