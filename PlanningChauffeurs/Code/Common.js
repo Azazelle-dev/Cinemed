@@ -1,13 +1,14 @@
 /**
- * Common.gs — Logique métier : détection de gare depuis un texte libre, tables
- * de délais, dates, collecte des mouvements, écriture (ajout uniquement),
- * mise en forme (plannings et sources), suppression. Aucun déclencheur ici,
- * uniquement des fonctions appelées par Main.gs.
+ * Common.gs — Logique métier : lecture de la table Paramètres (unifiée),
+ * détection de lieu depuis un texte libre, dates, collecte des mouvements,
+ * écriture (ajout uniquement), mise en forme (plannings et sources),
+ * suppression. Aucun déclencheur ici, uniquement des fonctions appelées par
+ * Main.gs.
  */
 
 /**
- * Normalise un nom de gare/aéroport pour comparaison : retire les espaces,
- * met en majuscules. Permet de faire matcher "StRoch" et "St Roch".
+ * Normalise un nom de lieu pour comparaison : retire les espaces, met en
+ * majuscules. Permet de faire matcher "St Roch" et "StRoch".
  * @param {string} texte
  * @return {string}
  */
@@ -17,29 +18,14 @@ function normaliserStation(texte) {
 }
 
 /**
- * Rassemble tous les codes de gare/aéroport connus (des deux tables de délais
- * + les codes "moyen propre" type PPM), déjà normalisés.
- * @param {Object<string, number>} tableDelaisArrivee
- * @param {Object<string, number>} tableDelaisDepart
- * @return {Set<string>}
- */
-function obtenirCodesStationConnus(tableDelaisArrivee, tableDelaisDepart) {
-  const codes = new Set();
-  Object.keys(tableDelaisArrivee).forEach(code => codes.add(code));
-  Object.keys(tableDelaisDepart).forEach(code => codes.add(code));
-  Global.CODES_MOYEN_PROPRE.forEach(code => codes.add(normaliserStation(code)));
-  return codes;
-}
-
-/**
- * Extrait le code de gare/aéroport d'un texte libre de ModeArrivée/ModeDépart :
- * "StRoch>Corum", "Corum>St Roch", "MRS>Corum ", "PPM", "MRS OS399",
- * "SDF TGV 6047", "St Roch TGV 6204"... Le format "A>B" prend le côté qui
- * n'est pas "Corum" ; sinon on cherche le plus long code connu en préfixe,
- * pour ignorer un numéro de vol/train accolé.
+ * Extrait l'abréviation de lieu d'un texte libre de ModeArrivée/ModeDépart :
+ * "StRoch>Corum", "Corum>SDF", "MRS>Corum ", "PPM", "MRS OS399",
+ * "SDF TGV 6047"... Le format "A>B" prend le côté qui n'est pas "Corum" ;
+ * sinon on cherche le plus long code connu en préfixe, pour ignorer un
+ * numéro de vol/train accolé.
  * @param {string} texteLibre
  * @param {Set<string>} codesConnus
- * @return {string} code de gare normalisé, ou le texte normalisé en repli
+ * @return {string} abréviation normalisée, ou le texte normalisé en repli
  */
 function extraireStationDepuisModeLibre(texteLibre, codesConnus) {
   if (!texteLibre) return "";
@@ -86,13 +72,13 @@ function minutesDepuisMinuit(date) {
 }
 
 /**
- * Vrai pour Saint-Roch ou pour un code "moyen propre" (PPM) : les deux
+ * Vrai pour Saint-Roch ("SR") ou pour un code "moyen propre" (PPM) : les deux
  * suivent les mêmes exceptions.
- * @param {string} station - code de gare déjà extrait/normalisé
+ * @param {string} station - abréviation déjà extraite/normalisée
  * @return {boolean}
  */
 function estStationSoumiseAExceptions(station) {
-  if (station === "STROCH") return true;
+  if (station === "SR") return true;
   return Global.CODES_MOYEN_PROPRE.some(code => normaliserStation(code) === station);
 }
 
@@ -201,46 +187,50 @@ function dureeEnMillisecondes(valeur) {
 }
 
 /**
- * Lit la table de délais "Arrivée" (colonnes A/B de Paramètres), clé = nom de
- * gare normalisé. PPM n'y est jamais ajouté : il n'a pas de délai, il est
- * géré séparément (voir estStationSoumiseAExceptions).
- * @return {Object<string, number>} station normalisée → délai en ms
+ * Lit la table `Paramètres` (colonnes A à E), indexée sur la colonne B
+ * (Abbréviations 4D) normalisée. La colonne A (nom complet) est ignorée par
+ * le script, purement informative pour les humains. Une ligne dont les
+ * colonnes C et D sont toutes les deux vides n'est pas ajoutée (cas de SPE
+ * et PPM, qui n'ont pas de délai chronométrable) : ces codes resteront avec
+ * Heure Pick up vide.
+ * @return {Object<string, {delaiDepart:number, delaiArrivee:number, dureeOccupation:number}>}
  */
-function obtenirTableDelaisArrivee() {
+function obtenirTableLieux() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
   const derniereLigne = feuille.getLastRow();
   if (derniereLigne < 2) return {};
-  const valeurs = feuille.getRange(2, 1, derniereLigne - 1, 2).getValues();
-  const codesMoyenPropre = Global.CODES_MOYEN_PROPRE.map(normaliserStation);
+
+  const valeurs = feuille.getRange(2, 1, derniereLigne - 1, 5).getValues(); // colonnes A à E
 
   const table = {};
   valeurs.forEach(ligne => {
-    const station = normaliserStation(ligne[0]);
-    if (!station || codesMoyenPropre.includes(station)) return;
-    table[station] = dureeEnMillisecondes(ligne[1]);
+    const abbreviation = normaliserStation(ligne[1]); // colonne B
+    if (!abbreviation) return;
+
+    const celluleDepart = ligne[2];  // colonne C
+    const celluleArrivee = ligne[3]; // colonne D
+    if (!celluleDepart && !celluleArrivee) return; // ex. SPE, PPM : pas de délai chronométrable
+
+    table[abbreviation] = {
+      delaiDepart: dureeEnMillisecondes(celluleDepart),
+      delaiArrivee: dureeEnMillisecondes(celluleArrivee),
+      dureeOccupation: dureeEnMillisecondes(ligne[4]) // colonne E, jamais affichée
+    };
   });
   return table;
 }
 
 /**
- * Lit la table de délais "Départ" (colonnes D/E de Paramètres), clé = nom de
- * gare normalisé. PPM n'y est jamais ajouté (voir obtenirTableDelaisArrivee).
- * @return {Object<string, number>} station normalisée → délai en ms
+ * Rassemble les codes utilisables pour la détection par préfixe : les lieux
+ * réels de la table Paramètres (avec délai) + les codes "moyen propre" (PPM),
+ * même sans délai associé.
+ * @param {Object} tableLieux
+ * @return {Set<string>}
  */
-function obtenirTableDelaisDepart() {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
-  const derniereLigne = feuille.getLastRow();
-  if (derniereLigne < 2) return {};
-  const valeurs = feuille.getRange(2, 4, derniereLigne - 1, 2).getValues();
-  const codesMoyenPropre = Global.CODES_MOYEN_PROPRE.map(normaliserStation);
-
-  const table = {};
-  valeurs.forEach(ligne => {
-    const station = normaliserStation(ligne[0]);
-    if (!station || codesMoyenPropre.includes(station)) return;
-    table[station] = dureeEnMillisecondes(ligne[1]);
-  });
-  return table;
+function obtenirCodesStationConnus(tableLieux) {
+  const codes = new Set(Object.keys(tableLieux));
+  Global.CODES_MOYEN_PROPRE.forEach(code => codes.add(normaliserStation(code)));
+  return codes;
 }
 
 /**
@@ -336,18 +326,18 @@ function colorerBlocsDeDatesDesSources() {
 /**
  * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
  * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu. Dans ce
- * cas heurePickup/lieuPickup restent vides en attendant que le trajet soit
- * renseigné, pour que la personne apparaisse quand même dans le planning du
- * jour. Une personne dont la gare détectée est Saint-Roch, ou dont le mode est
- * un code "moyen propre" (PPM), est retirée du résultat si la règle
+ * cas heurePickup/lieuPickup restent vides en attendant que le lieu soit
+ * reconnu, pour que la personne apparaisse quand même dans le planning du
+ * jour. Une personne dont le lieu détecté est Saint-Roch ("SR"), ou dont le
+ * mode est un code "moyen propre" (PPM), est retirée du résultat si la règle
  * d'exclusion s'applique (cf. estExcluArrivee) — évaluable seulement si
  * l'heure est connue, sinon la personne reste visible.
- * @param {Object<string, number>} tableDelaisArrivee
+ * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
- * @param {Set<string>} codesConnus - codes de gare connus, pour extraireStationDepuisModeLibre
+ * @param {Set<string>} codesConnus - codes connus, pour extraireStationDepuisModeLibre
  * @return {Array<Object>} mouvements
  */
-function collecterArrivees(tableDelaisArrivee, datesAutorisees, codesConnus) {
+function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
   const enTetes = donnees[0];
@@ -376,15 +366,18 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees, codesConnus) {
     const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
 
     // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
-    // la personne reste visible, comme pour tout trajet non encore confirmé.
+    // la personne reste visible, comme pour tout lieu non encore reconnu.
     if (heureEvenementDate && estExcluArrivee(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
     let lieuPickup = "";
+    let dureeOccupationChauffeur = 0;
 
-    if (heureRenseignee && station && tableDelaisArrivee.hasOwnProperty(station)) {
-      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisArrivee[station]));
+    if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
+      const infosLieu = tableLieux[station];
+      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiArrivee));
       lieuPickup = station;
+      dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
     mouvements.push({
@@ -396,7 +389,8 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees, codesConnus) {
       heurePickup: heurePickup,
       lieuPickup: lieuPickup,
       lieuDepose: ligne[idx.HOTEL],
-      heureEvenement: heureEvenementBrute
+      heureEvenement: heureEvenementBrute,
+      dureeOccupationChauffeur: dureeOccupationChauffeur // interne uniquement, jamais écrite dans un onglet
     });
   });
 
@@ -407,17 +401,13 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees, codesConnus) {
  * Parcourt DEPARTS et retourne toute personne dont DateDépart tombe dans
  * datesAutorisees — même si ModeDépart est encore vide ou non reconnu (mêmes
  * règles que collecterArrivees, y compris la règle Saint-Roch/PPM via
- * estExcluDepart). Calcule aussi heureRetourCorum par un lookup direct de la
- * même station dans la table Arrivée (plus besoin d'inverser un trajet,
- * puisque les deux tables utilisent désormais le même nom de gare comme clé)
- * — usage interne réservé à une future optimisation, jamais écrit dans un onglet.
- * @param {Object<string, number>} tableDelaisDepart
- * @param {Object<string, number>} tableDelaisArrivee
+ * estExcluDepart).
+ * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees
  * @param {Set<string>} codesConnus
  * @return {Array<Object>} mouvements
  */
-function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees, codesConnus) {
+function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_DEPARTS);
   const donnees = feuille.getDataRange().getValues();
   const enTetes = donnees[0];
@@ -446,21 +436,18 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
     const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
 
     // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
-    // la personne reste visible, comme pour tout trajet non encore confirmé.
+    // la personne reste visible, comme pour tout lieu non encore reconnu.
     if (heureEvenementDate && estExcluDepart(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
     let lieuDepose = "";
-    let heureRetourCorum = "";
+    let dureeOccupationChauffeur = 0;
 
-    if (heureRenseignee && station && tableDelaisDepart.hasOwnProperty(station)) {
-      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisDepart[station]));
+    if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
+      const infosLieu = tableLieux[station];
+      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiDepart));
       lieuDepose = station;
-
-      if (tableDelaisArrivee.hasOwnProperty(station)) {
-        const retour = new Date(heureEvenementDate.getTime() + tableDelaisArrivee[station]);
-        heureRetourCorum = formatHeureAffichage(retour);
-      }
+      dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
     mouvements.push({
@@ -473,7 +460,7 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
       lieuPickup: ligne[idx.HOTEL],
       lieuDepose: lieuDepose,
       heureEvenement: heureEvenementBrute,
-      heureRetourCorum: heureRetourCorum // interne uniquement, jamais écrite dans un onglet
+      dureeOccupationChauffeur: dureeOccupationChauffeur // interne uniquement, jamais écrite dans un onglet
     });
   });
 
@@ -535,14 +522,15 @@ function formaterOnglet(feuille) {
 
 /**
  * Écrit une liste de mouvements dans l'onglet journalier correspondant, en
- * AJOUT UNIQUEMENT : une ligne déjà présente (clé Nom|Prénom|Heure départ) est
- * ignorée, elle ne sera plus jamais modifiée par une génération ultérieure —
- * seules les nouvelles personnes sont ajoutées à chaque génération. Une
- * correction de trajet après coup se fait à la main directement dans l'onglet
- * de planning. La ligne à insérer est construite par position d'en-tête
- * retrouvée dynamiquement (pas par ordre fixe), pour rester correcte même si
- * l'ordre des colonnes du modèle Planning Source change. Ne touche jamais aux
- * colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut, Pays, Langue).
+ * AJOUT UNIQUEMENT : une ligne déjà présente (clé Nom|Prénom|Heure de
+ * l'événement) est ignorée, elle ne sera plus jamais modifiée par une
+ * génération ultérieure — seules les nouvelles personnes sont ajoutées à
+ * chaque génération. Une correction après coup se fait à la main directement
+ * dans l'onglet de planning. La ligne à insérer est construite par position
+ * d'en-tête retrouvée dynamiquement (pas par ordre fixe), pour rester
+ * correcte même si l'ordre des colonnes du modèle Planning Source change. Ne
+ * touche jamais aux colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut,
+ * Pays, Langue).
  * @param {string} nomOnglet
  * @param {Array<Object>} mouvements
  */
@@ -616,11 +604,11 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 }
 
 /**
- * Orchestration : colore les sources par blocs de dates, lit les deux tables de
- * délais une seule fois chacune, en déduit les codes de gare connus, collecte
- * arrivées et départs avec leur table respective, puis écrit (ajout uniquement)
- * dans les onglets concernés. Un onglet n'est créé (copie de Planning Source)
- * que pour une date ayant au moins une personne.
+ * Orchestration : colore les sources par blocs de dates, lit la table
+ * Paramètres unifiée une seule fois, en déduit les codes connus, collecte
+ * arrivées et départs, puis écrit (ajout uniquement) dans les onglets
+ * concernés. Un onglet n'est créé (copie de Planning Source) que pour une
+ * date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
@@ -628,13 +616,12 @@ function genererPlannings(datesCiblees) {
 
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
 
-  const tableDelaisArrivee = obtenirTableDelaisArrivee();
-  const tableDelaisDepart = obtenirTableDelaisDepart();
-  const codesConnus = obtenirCodesStationConnus(tableDelaisArrivee, tableDelaisDepart);
+  const tableLieux = obtenirTableLieux();
+  const codesConnus = obtenirCodesStationConnus(tableLieux);
   const clesAutorisees = new Set(dates.map(formatDateCle));
 
-  const mouvements = collecterArrivees(tableDelaisArrivee, clesAutorisees, codesConnus)
-    .concat(collecterDeparts(tableDelaisDepart, tableDelaisArrivee, clesAutorisees, codesConnus));
+  const mouvements = collecterArrivees(tableLieux, clesAutorisees, codesConnus)
+    .concat(collecterDeparts(tableLieux, clesAutorisees, codesConnus));
 
   const parOnglet = {};
   mouvements.forEach(mvt => {
