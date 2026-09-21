@@ -546,15 +546,15 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   const enTetes = feuille.getRange(1, 1, 1, derniereColonne).getValues()[0]
     .map(valeur => (valeur || "").toString().trim());
 
-  const idxNom         = enTetes.indexOf("Nom") + 1;
-  const idxPrenom      = enTetes.indexOf("Prénom") + 1;
-  const idxFonction    = enTetes.indexOf("Fonction") + 1;
-  const idxTelephone   = enTetes.indexOf("Téléphone") + 1;
-  const idxHeurePickup = enTetes.indexOf("Heure Pick up") + 1;
-  const idxLieuPickup  = enTetes.indexOf("Lieu Pick up") + 1;
-  const idxLieuDepose  = enTetes.indexOf("Lieu de dépose") + 1;
-  const idxHeureDepart = enTetes.indexOf("Heure départ") + 1;
-  const idxOrigine     = enTetes.indexOf("Arrivée/Départ") + 1;
+  const idxNom         = enTetes.indexOf(Global.COLONNES_PLANNING.NOM) + 1;
+  const idxPrenom      = enTetes.indexOf(Global.COLONNES_PLANNING.PRENOM) + 1;
+  const idxFonction    = enTetes.indexOf(Global.COLONNES_PLANNING.FONCTION) + 1;
+  const idxTelephone   = enTetes.indexOf(Global.COLONNES_PLANNING.TELEPHONE) + 1;
+  const idxHeurePickup = enTetes.indexOf(Global.COLONNES_PLANNING.HEURE_PICKUP) + 1;
+  const idxLieuPickup  = enTetes.indexOf(Global.COLONNES_PLANNING.LIEU_PICKUP) + 1;
+  const idxLieuDepose  = enTetes.indexOf(Global.COLONNES_PLANNING.LIEU_DEPOSE) + 1;
+  const idxHeureDepart = enTetes.indexOf(Global.COLONNES_PLANNING.HEURE_DEPART) + 1;
+  const idxOrigine     = enTetes.indexOf(Global.COLONNES_PLANNING.ORIGINE) + 1;
 
   // Empêche Sheets de réinterpréter une écriture future en heure/date (même
   // mécanisme que pour une saisie manuelle) — combiné à forcerTexteLitteral()
@@ -684,7 +684,7 @@ function diagnostiquerDetectionLieux() {
       ? Global.COLONNES_ARRIVEES.MODE_ARRIVEE
       : Global.COLONNES_DEPARTS.MODE_DEPART;
     const idxMode = enTetes.indexOf(colMode);
-    const idxNom = enTetes.indexOf("Nom");
+    const idxNom = enTetes.indexOf(Global.COLONNES_SOURCE.NOM);
 
     Logger.log("=== " + nomOnglet + " (colonne " + colMode + ") ===");
     donnees.slice(1, 11).forEach(ligne => { // 10 premières lignes à titre d'échantillon
