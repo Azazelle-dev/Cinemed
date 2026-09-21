@@ -192,8 +192,9 @@ function dureeEnMillisecondes(valeur) {
  * le script, purement informative pour les humains. Une ligne dont les
  * colonnes C et D sont toutes les deux vides n'est pas ajoutée (cas de SPE
  * et PPM, qui n'ont pas de délai chronométrable) : ces codes resteront avec
- * Heure Pick up vide.
- * @return {Object<string, {delaiDepart:number, delaiArrivee:number, dureeOccupation:number}>}
+ * Heure Pick up vide. Mémorise aussi le nom complet (colonne A), affiché à
+ * la place du code abrégé dans Lieu Pick up/Lieu de dépose.
+ * @return {Object<string, {nomComplet:string, delaiDepart:number, delaiArrivee:number, dureeOccupation:number}>}
  */
 function obtenirTableLieux() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
@@ -212,6 +213,7 @@ function obtenirTableLieux() {
     if (!celluleDepart && !celluleArrivee) return; // ex. SPE, PPM : pas de délai chronométrable
 
     table[abbreviation] = {
+      nomComplet: (ligne[0] || "").toString().trim(), // colonne A, affiché à la place du code
       delaiDepart: dureeEnMillisecondes(celluleDepart),
       delaiArrivee: dureeEnMillisecondes(celluleArrivee),
       dureeOccupation: dureeEnMillisecondes(ligne[4]) // colonne E, jamais affichée
@@ -376,7 +378,7 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
     if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
       const infosLieu = tableLieux[station];
       heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiArrivee));
-      lieuPickup = station;
+      lieuPickup = infosLieu.nomComplet || station; // nom complet (colonne A), fallback sur le code si absent
       dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
@@ -390,7 +392,8 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
       lieuPickup: lieuPickup,
       lieuDepose: ligne[idx.HOTEL],
       heureEvenement: heureEvenementBrute,
-      dureeOccupationChauffeur: dureeOccupationChauffeur // interne uniquement, jamais écrite dans un onglet
+      dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
+      origine: "Arrivée"
     });
   });
 
@@ -446,7 +449,7 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
     if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
       const infosLieu = tableLieux[station];
       heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiDepart));
-      lieuDepose = station;
+      lieuDepose = infosLieu.nomComplet || station; // nom complet (colonne A), fallback sur le code si absent
       dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
@@ -460,7 +463,8 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
       lieuPickup: ligne[idx.HOTEL],
       lieuDepose: lieuDepose,
       heureEvenement: heureEvenementBrute,
-      dureeOccupationChauffeur: dureeOccupationChauffeur // interne uniquement, jamais écrite dans un onglet
+      dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
+      origine: "Départ"
     });
   });
 
@@ -530,7 +534,8 @@ function formaterOnglet(feuille) {
  * d'en-tête retrouvée dynamiquement (pas par ordre fixe), pour rester
  * correcte même si l'ordre des colonnes du modèle Planning Source change. Ne
  * touche jamais aux colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut,
- * Pays, Langue).
+ * Pays, Langue). Écrit aussi "Arrivée/Départ" (si la colonne existe dans le
+ * modèle) selon que le mouvement provient d'ARRIVEES ou de DEPARTS.
  * @param {string} nomOnglet
  * @param {Array<Object>} mouvements
  */
@@ -549,6 +554,7 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   const idxLieuPickup  = enTetes.indexOf("Lieu Pick up") + 1;
   const idxLieuDepose  = enTetes.indexOf("Lieu de dépose") + 1;
   const idxHeureDepart = enTetes.indexOf("Heure départ") + 1;
+  const idxOrigine     = enTetes.indexOf("Arrivée/Départ") + 1;
 
   // Empêche Sheets de réinterpréter une écriture future en heure/date (même
   // mécanisme que pour une saisie manuelle) — combiné à forcerTexteLitteral()
@@ -587,6 +593,7 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
     ligne[idxLieuPickup - 1]  = mvt.lieuPickup;
     ligne[idxLieuDepose - 1]  = mvt.lieuDepose;
     ligne[idxHeureDepart - 1] = forcerTexteLitteral(mvt.heureEvenement);
+    ligne[idxOrigine - 1]     = mvt.origine;
     // Chauffeur, Nb, Film/Projet, Statut, Pays, Langue restent vides (pas de source / manuel)
     nouvellesLignes.push(ligne);
   });
@@ -646,5 +653,47 @@ function supprimerPlanningsGeneres() {
     if (motifNomJour.test(feuille.getName())) {
       classeur.deleteSheet(feuille);
     }
+  });
+}
+
+/**
+ * Outil de diagnostic manuel (menu → "Diagnostic détection des lieux") : logue
+ * la table Paramètres telle que lue par le script, alerte si elle est vide, et
+ * pour les 10 premières lignes d'ARRIVEES/DEPARTS logue le mode brut saisi, le
+ * code détecté, et si ce code matche bien une entrée de Paramètres. À utiliser
+ * quand Heure Pick up/Lieu Pick up restent vides pour des lignes qui semblent
+ * pourtant avoir un code valide.
+ */
+function diagnostiquerDetectionLieux() {
+  const tableLieux = obtenirTableLieux();
+  Logger.log("=== Table Paramètres lue ===");
+  Logger.log(JSON.stringify(tableLieux, null, 2));
+  if (Object.keys(tableLieux).length === 0) {
+    Logger.log("⚠️ ALERTE : la table est vide. Vérifie que l'onglet 'Paramètres' existe, " +
+      "que les colonnes C/D contiennent des HEURES (pas du texte), et qu'au moins une ligne " +
+      "a une valeur non vide en C ou D.");
+  }
+
+  const codesConnus = obtenirCodesStationConnus(tableLieux);
+
+  [Global.ONGLET_ARRIVEES, Global.ONGLET_DEPARTS].forEach(nomOnglet => {
+    const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+    const donnees = feuille.getDataRange().getValues();
+    const enTetes = donnees[0];
+    const colMode = nomOnglet === Global.ONGLET_ARRIVEES
+      ? Global.COLONNES_ARRIVEES.MODE_ARRIVEE
+      : Global.COLONNES_DEPARTS.MODE_DEPART;
+    const idxMode = enTetes.indexOf(colMode);
+    const idxNom = enTetes.indexOf("Nom");
+
+    Logger.log("=== " + nomOnglet + " (colonne " + colMode + ") ===");
+    donnees.slice(1, 11).forEach(ligne => { // 10 premières lignes à titre d'échantillon
+      if (!ligne[idxNom]) return;
+      const modeLibre = ligne[idxMode] ? ligne[idxMode].toString().trim() : "";
+      const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
+      const matche = station && tableLieux.hasOwnProperty(station);
+      Logger.log(ligne[idxNom] + " | mode brut: \"" + modeLibre + "\" -> détecté: \"" + station +
+        "\" -> " + (matche ? "OK, trouvé dans Paramètres" : "PAS DE MATCH"));
+    });
   });
 }

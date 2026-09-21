@@ -13,6 +13,8 @@ function onOpen() {
     .addItem("Générer tous les plannings", "menuGenererTout")
     .addItem("Générer des dates spécifiques…", "menuOuvrirSelectionDates")
     .addItem("Supprimer tous les plannings générés", "menuSupprimerPlannings")
+    .addSeparator()
+    .addItem("Diagnostic détection des lieux (voir les logs)", "menuDiagnostiquer")
     .addToUi();
 }
 
@@ -77,4 +79,15 @@ function menuSupprimerPlannings() {
 
   supprimerPlanningsGeneres();
   ui.alert("Tous les plannings générés ont été supprimés.");
+}
+
+/**
+ * Action de menu : lance le diagnostic de détection des lieux et informe où
+ * consulter le résultat (les logs, pas une alerte, pour rester lisible).
+ */
+function menuDiagnostiquer() {
+  diagnostiquerDetectionLieux();
+  SpreadsheetApp.getUi().alert(
+    "Diagnostic terminé. Va dans Extensions > Apps Script > Exécutions (ou Affichage > Journaux) pour voir le détail."
+  );
 }
