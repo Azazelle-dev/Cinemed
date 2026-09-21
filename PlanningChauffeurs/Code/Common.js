@@ -1,46 +1,80 @@
 /**
- * Common.gs — Logique métier : tables de délais, dates, collecte des mouvements,
- * écriture non destructive dans les onglets journaliers, mise en forme (plannings
- * et sources), suppression. Aucun déclencheur ici, uniquement des fonctions
- * appelées par Main.gs.
+ * Common.gs — Logique métier : détection de gare depuis un texte libre, tables
+ * de délais, dates, collecte des mouvements, écriture (ajout uniquement),
+ * mise en forme (plannings et sources), suppression. Aucun déclencheur ici,
+ * uniquement des fonctions appelées par Main.gs.
  */
 
 /**
- * Inverse un identifiant de trajet "A>B" en "B>A", pour retrouver l'entrée
- * correspondante dans l'autre table de délais sans maintenir une correspondance séparée.
- * @param {string} trajet
- * @return {string|null} null si le format n'est pas celui attendu
- */
-function nomTrajetInverse(trajet) {
-  const parties = trajet.split(">");
-  if (parties.length !== 2) return null;
-  return parties[1] + ">" + parties[0];
-}
-
-/**
- * Extrait le nom de la gare/aéroport d'un trajet, quel que soit son sens.
- * ex: "SDF>Corum" → "SDF", "Corum>SDF" → "SDF"
- * @param {string} trajet
+ * Normalise un nom de gare/aéroport pour comparaison : retire les espaces,
+ * met en majuscules. Permet de faire matcher "StRoch" et "St Roch".
+ * @param {string} texte
  * @return {string}
  */
-function extraireLieu(trajet) {
-  if (!trajet) return "";
-  const parties = trajet.split(">");
-  if (parties.length !== 2) return trajet;
-  return parties[0] === "Corum" ? parties[1] : parties[0];
+function normaliserStation(texte) {
+  if (!texte) return "";
+  return texte.toString().replace(/\s+/g, "").toUpperCase();
 }
 
-const FONCTIONS_EXCEPTION_ST_ROCH = ["avant-première", "jury antigone d'or", "jury bourse d'aide"];
+/**
+ * Rassemble tous les codes de gare/aéroport connus (des deux tables de délais
+ * + les codes "moyen propre" type PPM), déjà normalisés.
+ * @param {Object<string, number>} tableDelaisArrivee
+ * @param {Object<string, number>} tableDelaisDepart
+ * @return {Set<string>}
+ */
+function obtenirCodesStationConnus(tableDelaisArrivee, tableDelaisDepart) {
+  const codes = new Set();
+  Object.keys(tableDelaisArrivee).forEach(code => codes.add(code));
+  Object.keys(tableDelaisDepart).forEach(code => codes.add(code));
+  Global.CODES_MOYEN_PROPRE.forEach(code => codes.add(normaliserStation(code)));
+  return codes;
+}
+
+/**
+ * Extrait le code de gare/aéroport d'un texte libre de ModeArrivée/ModeDépart :
+ * "StRoch>Corum", "Corum>St Roch", "MRS>Corum ", "PPM", "MRS OS399",
+ * "SDF TGV 6047", "St Roch TGV 6204"... Le format "A>B" prend le côté qui
+ * n'est pas "Corum" ; sinon on cherche le plus long code connu en préfixe,
+ * pour ignorer un numéro de vol/train accolé.
+ * @param {string} texteLibre
+ * @param {Set<string>} codesConnus
+ * @return {string} code de gare normalisé, ou le texte normalisé en repli
+ */
+function extraireStationDepuisModeLibre(texteLibre, codesConnus) {
+  if (!texteLibre) return "";
+  const texte = texteLibre.toString().trim();
+
+  const parties = texte.split(">");
+  if (parties.length === 2) {
+    const gauche = normaliserStation(parties[0]);
+    const droite = normaliserStation(parties[1]);
+    return gauche === "CORUM" ? droite : gauche;
+  }
+
+  const texteNormalise = normaliserStation(texte);
+
+  if (codesConnus) {
+    const codesTries = Array.from(codesConnus).sort((a, b) => b.length - a.length);
+    for (const code of codesTries) {
+      if (code && texteNormalise.startsWith(code)) return code;
+    }
+  }
+
+  return texteNormalise; // repli : aucun code connu ne correspond, ne matchera probablement aucune table
+}
+
+const FONCTIONS_EXCEPTION = ["avant-première", "jury antigone d'or", "jury bourse d'aide"];
 
 /**
  * Indique si une fonction fait partie des exceptions à la règle d'exclusion
- * Gare Saint-Roch (comparaison insensible à la casse/aux espaces superflus).
+ * Saint-Roch/PPM (comparaison insensible à la casse/aux espaces superflus).
  * @param {string} fonction
  * @return {boolean}
  */
-function estFonctionExceptionStRoch(fonction) {
+function estFonctionException(fonction) {
   if (!fonction) return false;
-  return FONCTIONS_EXCEPTION_ST_ROCH.includes(fonction.toString().trim().toLowerCase());
+  return FONCTIONS_EXCEPTION.includes(fonction.toString().trim().toLowerCase());
 }
 
 /**
@@ -52,28 +86,39 @@ function minutesDepuisMinuit(date) {
 }
 
 /**
- * Règle Gare Saint-Roch — arrivée : exclue sauf fonction exception ou arrivée après 21h.
- * @param {string} trajet
+ * Vrai pour Saint-Roch ou pour un code "moyen propre" (PPM) : les deux
+ * suivent les mêmes exceptions.
+ * @param {string} station - code de gare déjà extrait/normalisé
+ * @return {boolean}
+ */
+function estStationSoumiseAExceptions(station) {
+  if (station === "STROCH") return true;
+  return Global.CODES_MOYEN_PROPRE.some(code => normaliserStation(code) === station);
+}
+
+/**
+ * Règle Saint-Roch/PPM — arrivée : exclue sauf fonction exception ou arrivée après 21h.
+ * @param {string} station
  * @param {Date} heureEvenement
  * @param {string} fonction
  * @return {boolean}
  */
-function estExcluStRochArrivee(trajet, heureEvenement, fonction) {
-  if (trajet !== "StRoch>Corum") return false; // pas concerné par la règle
-  if (estFonctionExceptionStRoch(fonction)) return false;
+function estExcluArrivee(station, heureEvenement, fonction) {
+  if (!estStationSoumiseAExceptions(station)) return false;
+  if (estFonctionException(fonction)) return false;
   return minutesDepuisMinuit(heureEvenement) <= 21 * 60; // pas "après 21h" → exclue
 }
 
 /**
- * Règle Gare Saint-Roch — départ : exclu sauf fonction exception ou départ avant 8h.
- * @param {string} trajet
+ * Règle Saint-Roch/PPM — départ : exclu sauf fonction exception ou départ avant 8h.
+ * @param {string} station
  * @param {Date} heureEvenement
  * @param {string} fonction
  * @return {boolean}
  */
-function estExcluStRochDepart(trajet, heureEvenement, fonction) {
-  if (trajet !== "Corum>St Roch") return false;
-  if (estFonctionExceptionStRoch(fonction)) return false;
+function estExcluDepart(station, heureEvenement, fonction) {
+  if (!estStationSoumiseAExceptions(station)) return false;
+  if (estFonctionException(fonction)) return false;
   return minutesDepuisMinuit(heureEvenement) >= 8 * 60; // pas "avant 8h" → exclu
 }
 
@@ -112,10 +157,8 @@ function formatHeureAffichage(date) {
 /**
  * Normalise une valeur de cellule "heure" lue via getValue() en texte "HH:mm",
  * qu'elle soit restée une chaîne ou que Sheets l'ait réinterprétée en heure/date
- * à l'écriture (même mécanisme qu'une saisie manuelle). Sans ça, comparer ou
- * utiliser comme clé de dédoublonnage une valeur parfois Date, parfois string,
- * ne matche jamais correctement — la personne réapparaît en double au lieu
- * d'être mise à jour.
+ * à l'écriture (même mécanisme qu'une saisie manuelle). Nécessaire pour
+ * dédoublonner de façon fiable quel que soit le type effectivement stocké.
  * @param {Date|string} valeur
  * @return {string}
  */
@@ -158,37 +201,44 @@ function dureeEnMillisecondes(valeur) {
 }
 
 /**
- * Lit la table de délais "Arrivée" (colonnes A/B de Paramètres), utilisée pour ARRIVEES.
- * @return {Object<string, number>} trajet → délai en ms
+ * Lit la table de délais "Arrivée" (colonnes A/B de Paramètres), clé = nom de
+ * gare normalisé. PPM n'y est jamais ajouté : il n'a pas de délai, il est
+ * géré séparément (voir estStationSoumiseAExceptions).
+ * @return {Object<string, number>} station normalisée → délai en ms
  */
 function obtenirTableDelaisArrivee() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
   const derniereLigne = feuille.getLastRow();
   if (derniereLigne < 2) return {};
   const valeurs = feuille.getRange(2, 1, derniereLigne - 1, 2).getValues();
+  const codesMoyenPropre = Global.CODES_MOYEN_PROPRE.map(normaliserStation);
 
   const table = {};
   valeurs.forEach(ligne => {
-    const trajet = ligne[0];
-    if (trajet) table[trajet.toString().trim()] = dureeEnMillisecondes(ligne[1]);
+    const station = normaliserStation(ligne[0]);
+    if (!station || codesMoyenPropre.includes(station)) return;
+    table[station] = dureeEnMillisecondes(ligne[1]);
   });
   return table;
 }
 
 /**
- * Lit la table de délais "Départ" (colonnes D/E de Paramètres), utilisée pour DEPARTS.
- * @return {Object<string, number>} trajet → délai en ms
+ * Lit la table de délais "Départ" (colonnes D/E de Paramètres), clé = nom de
+ * gare normalisé. PPM n'y est jamais ajouté (voir obtenirTableDelaisArrivee).
+ * @return {Object<string, number>} station normalisée → délai en ms
  */
 function obtenirTableDelaisDepart() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
   const derniereLigne = feuille.getLastRow();
   if (derniereLigne < 2) return {};
   const valeurs = feuille.getRange(2, 4, derniereLigne - 1, 2).getValues();
+  const codesMoyenPropre = Global.CODES_MOYEN_PROPRE.map(normaliserStation);
 
   const table = {};
   valeurs.forEach(ligne => {
-    const trajet = ligne[0];
-    if (trajet) table[trajet.toString().trim()] = dureeEnMillisecondes(ligne[1]);
+    const station = normaliserStation(ligne[0]);
+    if (!station || codesMoyenPropre.includes(station)) return;
+    table[station] = dureeEnMillisecondes(ligne[1]);
   });
   return table;
 }
@@ -286,15 +336,18 @@ function colorerBlocsDeDatesDesSources() {
 /**
  * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
  * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu. Dans ce
- * cas heurePickup/lieuPickup restent vides en attendant que le trajet soit renseigné,
- * pour que la personne apparaisse quand même dans le planning du jour. Une
- * personne dont le trajet confirmé est StRoch>Corum est retirée du résultat si
- * la règle Gare Saint-Roch s'applique (cf. estExcluStRochArrivee).
+ * cas heurePickup/lieuPickup restent vides en attendant que le trajet soit
+ * renseigné, pour que la personne apparaisse quand même dans le planning du
+ * jour. Une personne dont la gare détectée est Saint-Roch, ou dont le mode est
+ * un code "moyen propre" (PPM), est retirée du résultat si la règle
+ * d'exclusion s'applique (cf. estExcluArrivee) — évaluable seulement si
+ * l'heure est connue, sinon la personne reste visible.
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
+ * @param {Set<string>} codesConnus - codes de gare connus, pour extraireStationDepuisModeLibre
  * @return {Array<Object>} mouvements
  */
-function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
+function collecterArrivees(tableDelaisArrivee, datesAutorisees, codesConnus) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
   const enTetes = donnees[0];
@@ -319,18 +372,19 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
     const heureRenseignee = heureArrivee instanceof Date;
     const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureArrivee) : null;
     const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
-    const mode = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
+    const modeLibre = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
+    const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
 
-    // Règle Gare Saint-Roch : évaluable seulement si l'heure est connue ; sinon la
-    // personne reste visible, comme pour tout trajet non encore confirmé.
-    if (heureEvenementDate && estExcluStRochArrivee(mode, heureEvenementDate, ligne[idx.FONCTION])) return;
+    // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
+    // la personne reste visible, comme pour tout trajet non encore confirmé.
+    if (heureEvenementDate && estExcluArrivee(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
     let lieuPickup = "";
 
-    if (heureRenseignee && tableDelaisArrivee.hasOwnProperty(mode)) {
-      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisArrivee[mode]));
-      lieuPickup = extraireLieu(mode);
+    if (heureRenseignee && station && tableDelaisArrivee.hasOwnProperty(station)) {
+      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisArrivee[station]));
+      lieuPickup = station;
     }
 
     mouvements.push({
@@ -352,17 +406,18 @@ function collecterArrivees(tableDelaisArrivee, datesAutorisees) {
 /**
  * Parcourt DEPARTS et retourne toute personne dont DateDépart tombe dans
  * datesAutorisees — même si ModeDépart est encore vide ou non reconnu (mêmes
- * règles que collecterArrivees, y compris la règle Gare Saint-Roch via
- * estExcluStRochDepart pour un trajet confirmé Corum>St Roch). Calcule aussi
- * heureRetourCorum via la table "Arrivée" (trajet inversé) quand le trajet est
- * reconnu — usage interne réservé à une future optimisation, jamais écrit dans
- * un onglet.
+ * règles que collecterArrivees, y compris la règle Saint-Roch/PPM via
+ * estExcluDepart). Calcule aussi heureRetourCorum par un lookup direct de la
+ * même station dans la table Arrivée (plus besoin d'inverser un trajet,
+ * puisque les deux tables utilisent désormais le même nom de gare comme clé)
+ * — usage interne réservé à une future optimisation, jamais écrit dans un onglet.
  * @param {Object<string, number>} tableDelaisDepart
  * @param {Object<string, number>} tableDelaisArrivee
  * @param {Set<string>} datesAutorisees
+ * @param {Set<string>} codesConnus
  * @return {Array<Object>} mouvements
  */
-function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees) {
+function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees, codesConnus) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_DEPARTS);
   const donnees = feuille.getDataRange().getValues();
   const enTetes = donnees[0];
@@ -387,23 +442,23 @@ function collecterDeparts(tableDelaisDepart, tableDelaisArrivee, datesAutorisees
     const heureRenseignee = heureDepart instanceof Date;
     const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureDepart) : null;
     const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
-    const mode = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
+    const modeLibre = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
+    const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
 
-    // Règle Gare Saint-Roch : évaluable seulement si l'heure est connue ; sinon la
-    // personne reste visible, comme pour tout trajet non encore confirmé.
-    if (heureEvenementDate && estExcluStRochDepart(mode, heureEvenementDate, ligne[idx.FONCTION])) return;
+    // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
+    // la personne reste visible, comme pour tout trajet non encore confirmé.
+    if (heureEvenementDate && estExcluDepart(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
     let lieuDepose = "";
     let heureRetourCorum = "";
 
-    if (heureRenseignee && tableDelaisDepart.hasOwnProperty(mode)) {
-      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisDepart[mode]));
-      lieuDepose = extraireLieu(mode);
+    if (heureRenseignee && station && tableDelaisDepart.hasOwnProperty(station)) {
+      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - tableDelaisDepart[station]));
+      lieuDepose = station;
 
-      const trajetInverse = nomTrajetInverse(mode);
-      if (trajetInverse && tableDelaisArrivee.hasOwnProperty(trajetInverse)) {
-        const retour = new Date(heureEvenementDate.getTime() + tableDelaisArrivee[trajetInverse]);
+      if (tableDelaisArrivee.hasOwnProperty(station)) {
+        const retour = new Date(heureEvenementDate.getTime() + tableDelaisArrivee[station]);
         heureRetourCorum = formatHeureAffichage(retour);
       }
     }
@@ -479,15 +534,15 @@ function formaterOnglet(feuille) {
 }
 
 /**
- * Écrit une liste de mouvements dans l'onglet journalier correspondant. La ligne
- * à insérer est construite par position d'en-tête retrouvée dynamiquement (pas
- * par ordre fixe), pour rester correcte même si l'ordre des colonnes du modèle
- * Planning Source change. Ajoute les mouvements absents, met à jour Heure Pick up /
- * Lieu Pick up / Lieu de dépose pour ceux déjà présents, ne touche jamais aux
- * colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut, Pays, Langue), puis trie
- * par ordre chronologique. La clé de dédoublonnage est Nom|Prénom|Heure départ
- * (l'heure brute de l'événement), qui distingue naturellement une arrivée d'un
- * départ pour une même personne.
+ * Écrit une liste de mouvements dans l'onglet journalier correspondant, en
+ * AJOUT UNIQUEMENT : une ligne déjà présente (clé Nom|Prénom|Heure départ) est
+ * ignorée, elle ne sera plus jamais modifiée par une génération ultérieure —
+ * seules les nouvelles personnes sont ajoutées à chaque génération. Une
+ * correction de trajet après coup se fait à la main directement dans l'onglet
+ * de planning. La ligne à insérer est construite par position d'en-tête
+ * retrouvée dynamiquement (pas par ordre fixe), pour rester correcte même si
+ * l'ordre des colonnes du modèle Planning Source change. Ne touche jamais aux
+ * colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut, Pays, Langue).
  * @param {string} nomOnglet
  * @param {Array<Object>} mouvements
  */
@@ -509,7 +564,9 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 
   // Empêche Sheets de réinterpréter une écriture future en heure/date (même
   // mécanisme que pour une saisie manuelle) — combiné à forcerTexteLitteral()
-  // à l'écriture ci-dessous.
+  // à l'écriture ci-dessous. Sans ça, la clé de dédoublonnage (basée sur
+  // Heure départ) ne matcherait plus jamais et la même personne serait
+  // ajoutée en double à chaque génération.
   if (idxHeurePickup > 0) {
     feuille.getRange(1, idxHeurePickup, feuille.getMaxRows(), 1).setNumberFormat("@");
   }
@@ -518,89 +575,66 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
   }
 
   const derniereLigneAvant = feuille.getLastRow();
-  const dejaPresents = new Map();
+  const dejaPresents = new Set();
   if (derniereLigneAvant > 1) {
     const existants = feuille.getRange(2, 1, derniereLigneAvant - 1, derniereColonne).getValues();
-    existants.forEach((ligne, i) => {
+    existants.forEach(ligne => {
       const cle = ligne[idxNom - 1] + "|" + ligne[idxPrenom - 1] + "|" + normaliserValeurHeure(ligne[idxHeureDepart - 1]);
-      dejaPresents.set(cle, i + 2);
+      dejaPresents.add(cle);
     });
   }
 
   const nouvellesLignes = [];
-  let quelqueChoseAChange = false;
 
   mouvements.forEach(mvt => {
     const cle = mvt.nom + "|" + mvt.prenom + "|" + mvt.heureEvenement;
+    if (dejaPresents.has(cle)) return; // déjà présente, on n'y touche plus jamais
 
-    if (dejaPresents.has(cle)) {
-      const ligneExistante = dejaPresents.get(cle);
-      const heureActuelle     = normaliserValeurHeure(feuille.getRange(ligneExistante, idxHeurePickup).getValue());
-      const lieuPickupActuel  = feuille.getRange(ligneExistante, idxLieuPickup).getValue();
-      const lieuDeposeActuel  = feuille.getRange(ligneExistante, idxLieuDepose).getValue();
-
-      if (heureActuelle !== mvt.heurePickup || lieuPickupActuel !== mvt.lieuPickup || lieuDeposeActuel !== mvt.lieuDepose) {
-        feuille.getRange(ligneExistante, idxHeurePickup).setValue(forcerTexteLitteral(mvt.heurePickup));
-        feuille.getRange(ligneExistante, idxLieuPickup).setValue(mvt.lieuPickup);
-        feuille.getRange(ligneExistante, idxLieuDepose).setValue(mvt.lieuDepose);
-        quelqueChoseAChange = true;
-      }
-    } else {
-      const ligne = new Array(derniereColonne).fill("");
-      ligne[idxNom - 1]         = mvt.nom;
-      ligne[idxPrenom - 1]      = mvt.prenom;
-      ligne[idxFonction - 1]    = mvt.fonction;
-      ligne[idxTelephone - 1]   = mvt.telephone;
-      ligne[idxHeurePickup - 1] = forcerTexteLitteral(mvt.heurePickup);
-      ligne[idxLieuPickup - 1]  = mvt.lieuPickup;
-      ligne[idxLieuDepose - 1]  = mvt.lieuDepose;
-      ligne[idxHeureDepart - 1] = forcerTexteLitteral(mvt.heureEvenement);
-      // Chauffeur, Nb, Film/Projet, Statut, Pays, Langue restent vides (pas de source / manuel)
-      nouvellesLignes.push(ligne);
-    }
+    const ligne = new Array(derniereColonne).fill("");
+    ligne[idxNom - 1]         = mvt.nom;
+    ligne[idxPrenom - 1]      = mvt.prenom;
+    ligne[idxFonction - 1]    = mvt.fonction;
+    ligne[idxTelephone - 1]   = mvt.telephone;
+    ligne[idxHeurePickup - 1] = forcerTexteLitteral(mvt.heurePickup);
+    ligne[idxLieuPickup - 1]  = mvt.lieuPickup;
+    ligne[idxLieuDepose - 1]  = mvt.lieuDepose;
+    ligne[idxHeureDepart - 1] = forcerTexteLitteral(mvt.heureEvenement);
+    // Chauffeur, Nb, Film/Projet, Statut, Pays, Langue restent vides (pas de source / manuel)
+    nouvellesLignes.push(ligne);
   });
 
-  if (nouvellesLignes.length > 0) {
-    feuille.getRange(feuille.getLastRow() + 1, 1, nouvellesLignes.length, derniereColonne)
-      .setValues(nouvellesLignes);
-    quelqueChoseAChange = true;
-  }
+  if (nouvellesLignes.length === 0) return; // rien de nouveau, on ne touche à rien
 
-  if (!quelqueChoseAChange) return;
+  feuille.getRange(feuille.getLastRow() + 1, 1, nouvellesLignes.length, derniereColonne)
+    .setValues(nouvellesLignes);
 
   const derniereLigneApres = feuille.getLastRow();
-  if (derniereLigneApres > 1) {
-    feuille.getRange(2, 1, derniereLigneApres - 1, derniereColonne)
-      .sort({ column: idxHeurePickup, ascending: true });
-  }
+  feuille.getRange(2, 1, derniereLigneApres - 1, derniereColonne)
+    .sort({ column: idxHeurePickup, ascending: true });
 
   formaterOnglet(feuille);
 }
 
 /**
  * Orchestration : colore les sources par blocs de dates, lit les deux tables de
- * délais une seule fois chacune, collecte arrivées et départs avec leur table
- * respective, puis écrit dans les onglets concernés. Un onglet n'est créé (copie
- * de Planning Source) que pour une date ayant au moins une personne. Restaure
- * l'onglet actif de départ à la fin, quel que soit l'appelant (menu, sélection
- * de dates, ou génération automatique sur inactivité), pour ne jamais faire
- * sauter l'utilisateur d'onglet pendant/après une génération.
+ * délais une seule fois chacune, en déduit les codes de gare connus, collecte
+ * arrivées et départs avec leur table respective, puis écrit (ajout uniquement)
+ * dans les onglets concernés. Un onglet n'est créé (copie de Planning Source)
+ * que pour une date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
-  const classeur = SpreadsheetApp.getActive();
-  const ongletActifAvant = classeur.getActiveSheet();
-
   colorerBlocsDeDatesDesSources(); // mise en forme des sources à chaque génération
 
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
 
   const tableDelaisArrivee = obtenirTableDelaisArrivee();
   const tableDelaisDepart = obtenirTableDelaisDepart();
+  const codesConnus = obtenirCodesStationConnus(tableDelaisArrivee, tableDelaisDepart);
   const clesAutorisees = new Set(dates.map(formatDateCle));
 
-  const mouvements = collecterArrivees(tableDelaisArrivee, clesAutorisees)
-    .concat(collecterDeparts(tableDelaisDepart, tableDelaisArrivee, clesAutorisees));
+  const mouvements = collecterArrivees(tableDelaisArrivee, clesAutorisees, codesConnus)
+    .concat(collecterDeparts(tableDelaisDepart, tableDelaisArrivee, clesAutorisees, codesConnus));
 
   const parOnglet = {};
   mouvements.forEach(mvt => {
@@ -610,8 +644,6 @@ function genererPlannings(datesCiblees) {
   });
 
   Object.keys(parOnglet).forEach(nomOnglet => ecrireMouvementsDansOnglet(nomOnglet, parOnglet[nomOnglet]));
-
-  classeur.setActiveSheet(ongletActifAvant);
 }
 
 /**

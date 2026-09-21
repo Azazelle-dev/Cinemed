@@ -34,12 +34,7 @@ const Global = {
     HOTEL: "NomHotel"
   },
 
-  JOURS_FR: ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"],
+  CODES_MOYEN_PROPRE: ["PPM"], // valeurs qui excluent totalement la personne du planning
 
-  // Génération automatique : régénère les plannings ce délai après la dernière
-  // modification sur ARRIVEES/DEPARTS (aucune activité entre-temps).
-  DELAI_INACTIVITE_MS: 15 * 1000,
-  NOM_FONCTION_AUTO: "genererPlanningsAuto",
-  NOM_FONCTION_ON_EDIT: "onEditInstallable",
-  PROPRIETE_TRIGGER_AUTO: "triggerAutoGenerationId"
+  JOURS_FR: ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"]
 };
