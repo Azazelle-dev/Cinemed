@@ -176,9 +176,17 @@ function forcerTexteLitteral(texte) {
  * @param {Date|number} valeur
  * @return {number}
  */
+// Référence Sheets (30/12/1899, minuit) construite de la même façon que les
+// valeurs de durée lues depuis la feuille, pour que le décalage historique de
+// fuseau horaire (Paris Mean Time ≈ UTC+0:09:21 avant 1911) s'annule dans la
+// soustraction plutôt que de fausser le résultat (getUTCHours() sur une date
+// de 1899 restait décalé d'environ 9 minutes par rapport à l'heure locale
+// attendue).
+const EPOQUE_SHEETS = new Date(1899, 11, 30, 0, 0, 0, 0);
+
 function dureeEnMillisecondes(valeur) {
   if (valeur instanceof Date) {
-    return valeur.getUTCHours() * 3600000 + valeur.getUTCMinutes() * 60000 + valeur.getUTCSeconds() * 1000;
+    return valeur.getTime() - EPOQUE_SHEETS.getTime();
   }
   if (typeof valeur === "number") {
     return Math.round(valeur * 24 * 60 * 60 * 1000);
@@ -660,6 +668,22 @@ function formaterOnglet(feuille) {
     feuille.getBandings().forEach(bande => bande.remove());
     feuille.getRange(1, 1, derniereLigne, derniereColonne)
       .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
+  }
+
+  // Force le format Heure (HH:mm) sur les colonnes calculées, au cas où la
+  // colonne aurait hérité d'un format Durée ([h]:mm:ss) depuis le modèle.
+  const enTetes = feuille.getRange(1, 1, 1, derniereColonne).getValues()[0]
+    .map(valeur => (valeur || "").toString().trim());
+  const idxHeurePickup = enTetes.indexOf(Global.COLONNES_PLANNING.HEURE_PICKUP) + 1;
+  const idxHeureDepart = enTetes.indexOf(Global.COLONNES_PLANNING.HEURE_DEPART) + 1;
+
+  if (derniereLigne > 1) {
+    if (idxHeurePickup > 0) {
+      feuille.getRange(2, idxHeurePickup, derniereLigne - 1, 1).setNumberFormat("HH:mm");
+    }
+    if (idxHeureDepart > 0) {
+      feuille.getRange(2, idxHeureDepart, derniereLigne - 1, 1).setNumberFormat("HH:mm");
+    }
   }
 
   feuille.autoResizeColumns(1, derniereColonne);
