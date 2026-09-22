@@ -200,9 +200,8 @@ function dureeEnMillisecondes(valeur) {
  * le script, purement informative pour les humains. Une ligne dont les
  * colonnes C et D sont toutes les deux vides n'est pas ajoutée (cas de SPE
  * et PPM, qui n'ont pas de délai chronométrable) : ces codes resteront avec
- * Heure Pick up vide. Mémorise aussi le nom complet (colonne A), affiché à
- * la place du code abrégé dans Lieu Pick up/Lieu de dépose.
- * @return {Object<string, {nomComplet:string, delaiDepart:number, delaiArrivee:number, dureeOccupation:number}>}
+ * Heure Pick up vide.
+ * @return {Object<string, {delaiDepart:number, delaiArrivee:number, dureeOccupation:number}>}
  */
 function obtenirTableLieux() {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
@@ -221,7 +220,6 @@ function obtenirTableLieux() {
     if (!celluleDepart && !celluleArrivee) return; // ex. SPE, PPM : pas de délai chronométrable
 
     table[abbreviation] = {
-      nomComplet: (ligne[0] || "").toString().trim(), // colonne A, affiché à la place du code
       delaiDepart: dureeEnMillisecondes(celluleDepart),
       delaiArrivee: dureeEnMillisecondes(celluleArrivee),
       dureeOccupation: dureeEnMillisecondes(ligne[4]) // colonne E, jamais affichée
@@ -434,13 +432,15 @@ function colorerBlocsDeDatesDesSources() {
 
 /**
  * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
- * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu. Dans ce
- * cas heurePickup/lieuPickup restent vides en attendant que le lieu soit
- * reconnu, pour que la personne apparaisse quand même dans le planning du
- * jour. Une personne dont le lieu détecté est Saint-Roch ("SR"), ou dont le
- * mode est un code "moyen propre" (PPM), est retirée du résultat si la règle
- * d'exclusion s'applique (cf. estExcluArrivee) — évaluable seulement si
- * l'heure est connue, sinon la personne reste visible.
+ * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu.
+ * lieuPickup est toujours une copie brute de ModeArrivée (abréviation +
+ * numéro de vol/train tel que saisi), qu'il soit reconnu ou non ; seul
+ * heurePickup dépend de la reconnaissance et reste vide tant que le lieu
+ * n'est pas identifié dans Paramètres. Une personne dont le lieu détecté est
+ * Saint-Roch ("SR"), ou dont le mode est un code "moyen propre" (PPM), est
+ * retirée du résultat si la règle d'exclusion s'applique (cf.
+ * estExcluArrivee) — évaluable seulement si l'heure est connue, sinon la
+ * personne reste visible.
  * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
  * @param {Set<string>} codesConnus - codes connus, pour extraireStationDepuisModeLibre
@@ -502,13 +502,12 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, li
     if (heureEvenementDate && estExcluArrivee(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
-    let lieuPickup = "";
+    const lieuPickup = modeLibre; // copie brute de ModeArrivée (abréviation + numéro de vol/train)
     let dureeOccupationChauffeur = 0;
 
     if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
       const infosLieu = tableLieux[station];
       heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiArrivee));
-      lieuPickup = infosLieu.nomComplet || station; // nom complet (colonne A), fallback sur le code si absent
       dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
@@ -596,13 +595,12 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lig
     if (heureEvenementDate && estExcluDepart(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
-    let lieuDepose = "";
+    const lieuDepose = modeLibre; // copie brute de ModeDépart (abréviation + numéro de vol/train)
     let dureeOccupationChauffeur = 0;
 
     if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
       const infosLieu = tableLieux[station];
       heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiDepart));
-      lieuDepose = infosLieu.nomComplet || station; // nom complet (colonne A), fallback sur le code si absent
       dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
