@@ -433,14 +433,14 @@ function colorerBlocsDeDatesDesSources() {
 /**
  * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
  * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu.
- * lieuPickup est toujours une copie brute de ModeArrivée (abréviation +
- * numéro de vol/train tel que saisi), qu'il soit reconnu ou non ; seul
- * heurePickup dépend de la reconnaissance et reste vide tant que le lieu
- * n'est pas identifié dans Paramètres. Une personne dont le lieu détecté est
- * Saint-Roch ("SR"), ou dont le mode est un code "moyen propre" (PPM), est
- * retirée du résultat si la règle d'exclusion s'applique (cf.
- * estExcluArrivee) — évaluable seulement si l'heure est connue, sinon la
- * personne reste visible.
+ * heurePickup ET lieuPickup (copie brute de ModeArrivée : abréviation +
+ * numéro de vol/train tel que saisi) restent tous les deux vides tant que
+ * l'abréviation n'est pas reconnue dans Paramètres — une abréviation non
+ * reconnue est une erreur (voir erreurs plus bas), elle ne doit pas être
+ * recopiée. Une personne dont le lieu détecté est Saint-Roch ("SR"), ou dont
+ * le mode est un code "moyen propre" (PPM), est retirée du résultat si la
+ * règle d'exclusion s'applique (cf. estExcluArrivee) — évaluable seulement
+ * si l'heure est connue, sinon la personne reste visible.
  * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
  * @param {Set<string>} codesConnus - codes connus, pour extraireStationDepuisModeLibre
@@ -502,12 +502,16 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, li
     if (heureEvenementDate && estExcluArrivee(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
-    const lieuPickup = modeLibre; // copie brute de ModeArrivée (abréviation + numéro de vol/train)
+    let lieuPickup = "";
     let dureeOccupationChauffeur = 0;
 
+    // Copie brute de ModeArrivée uniquement si l'abréviation est reconnue dans
+    // Paramètres : une abréviation non reconnue est une erreur (déjà signalée
+    // via erreurs/lignesVerifiees plus haut), elle ne doit pas être recopiée.
     if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
       const infosLieu = tableLieux[station];
       heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiArrivee));
+      lieuPickup = modeLibre;
       dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
@@ -595,12 +599,16 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lig
     if (heureEvenementDate && estExcluDepart(station, heureEvenementDate, ligne[idx.FONCTION])) return;
 
     let heurePickup = "";
-    const lieuDepose = modeLibre; // copie brute de ModeDépart (abréviation + numéro de vol/train)
+    let lieuDepose = "";
     let dureeOccupationChauffeur = 0;
 
+    // Copie brute de ModeDépart uniquement si l'abréviation est reconnue dans
+    // Paramètres : une abréviation non reconnue est une erreur (déjà signalée
+    // via erreurs/lignesVerifiees plus haut), elle ne doit pas être recopiée.
     if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
       const infosLieu = tableLieux[station];
       heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiDepart));
+      lieuDepose = modeLibre;
       dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
     }
 
