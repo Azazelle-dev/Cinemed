@@ -223,14 +223,38 @@ function obtenirTableLieux() {
 }
 
 /**
- * Rassemble les codes utilisables pour la détection par préfixe : les lieux
- * réels de la table Paramètres (avec délai) + les codes "moyen propre" (PPM),
- * même sans délai associé.
+ * Lit toutes les abréviations réellement présentes en colonne B de
+ * Paramètres, y compris celles sans délai chronométrable (ex. SPE) —
+ * contrairement à obtenirTableLieux() qui ne garde que les lieux avec délai.
+ * Sert à distinguer une abréviation simplement pas encore chronométrable
+ * (reconnue, mais Heure Pick up restera vide) d'une abréviation carrément
+ * absente de Paramètres (faute de frappe, ancien format non ressaisi...).
+ * @return {Set<string>} abréviations normalisées présentes dans Paramètres
+ */
+function obtenirAbreviationsParametres() {
+  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
+  const derniereLigne = feuille.getLastRow();
+  if (derniereLigne < 2) return new Set();
+
+  const valeurs = feuille.getRange(2, 2, derniereLigne - 1, 1).getValues(); // colonne B seule
+  const codes = new Set();
+  valeurs.forEach(ligne => {
+    const abbreviation = normaliserStation(ligne[0]);
+    if (abbreviation) codes.add(abbreviation);
+  });
+  return codes;
+}
+
+/**
+ * Rassemble les codes utilisables pour la détection par préfixe : toutes les
+ * abréviations présentes dans Paramètres (avec ou sans délai) + les codes
+ * "moyen propre" (PPM), même si PPM n'y est pas encore saisi.
  * @param {Object} tableLieux
  * @return {Set<string>}
  */
 function obtenirCodesStationConnus(tableLieux) {
-  const codes = new Set(Object.keys(tableLieux));
+  const codes = obtenirAbreviationsParametres();
+  Object.keys(tableLieux).forEach(code => codes.add(code));
   Global.CODES_MOYEN_PROPRE.forEach(code => codes.add(normaliserStation(code)));
   return codes;
 }
@@ -410,9 +434,17 @@ function colorerBlocsDeDatesDesSources() {
  * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
  * @param {Set<string>} codesConnus - codes connus, pour extraireStationDepuisModeLibre
+ * @param {Array<Object>} erreurs - complété (mutation) avec une entrée par
+ *   ModeArrivée renseigné mais dont l'abréviation ne correspond à aucune
+ *   entrée de Paramètres (faute de frappe, ancien format non ressaisi...)
+ * @param {Array<Object>} lignesVerifiees - complété (mutation) avec {onglet, ligne}
+ *   pour chaque ligne effectivement passée en revue cette génération — sert à
+ *   ne remettre en noir (marquerLignesEnErreur) que les lignes réellement
+ *   revérifiées, pas tout ARRIVEES/DEPARTS, en cas de génération partielle
+ *   (dates spécifiques) où d'autres lignes en erreur restent non revérifiées.
  * @return {Array<Object>} mouvements
  */
-function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
+function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
 
@@ -425,7 +457,7 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
 
   const mouvements = [];
 
-  donnees.slice(1).forEach(ligne => {
+  donnees.slice(1).forEach((ligne, i) => {
     if (!ligne[idx.NOM]) return;
 
     const date = ligne[idx.DATE_ARRIVEE];
@@ -434,12 +466,26 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
+    lignesVerifiees.push({ onglet: Global.ONGLET_ARRIVEES, ligne: i + 2 });
+
     const heureArrivee = ligne[idx.HEURE_ARRIVEE];
     const heureRenseignee = heureArrivee instanceof Date;
     const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureArrivee) : null;
     const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
     const modeLibre = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
     const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
+
+    // ModeArrivée renseigné mais abréviation absente de Paramètres — vide n'est
+    // jamais une erreur (trajet pas encore saisi), une valeur non reconnue si.
+    if (modeLibre && !codesConnus.has(station)) {
+      erreurs.push({
+        onglet: Global.ONGLET_ARRIVEES,
+        ligne: i + 2, // +2 : ligne 1 = en-tête, i=0 -> ligne 2
+        nom: ligne[idx.NOM],
+        prenom: ligne[idx.PRENOM],
+        modeBrut: modeLibre
+      });
+    }
 
     // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
     // la personne reste visible, comme pour tout lieu non encore reconnu.
@@ -482,9 +528,15 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
  * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees
  * @param {Set<string>} codesConnus
+ * @param {Array<Object>} erreurs - complété (mutation) avec une entrée par
+ *   ModeDépart renseigné mais dont l'abréviation ne correspond à aucune
+ *   entrée de Paramètres (faute de frappe, ancien format non ressaisi...)
+ * @param {Array<Object>} lignesVerifiees - complété (mutation) avec {onglet, ligne}
+ *   pour chaque ligne effectivement passée en revue cette génération (voir
+ *   collecterArrivees)
  * @return {Array<Object>} mouvements
  */
-function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
+function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_DEPARTS);
   const donnees = feuille.getDataRange().getValues();
 
@@ -497,7 +549,7 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
 
   const mouvements = [];
 
-  donnees.slice(1).forEach(ligne => {
+  donnees.slice(1).forEach((ligne, i) => {
     if (!ligne[idx.NOM]) return;
 
     const date = ligne[idx.DATE_DEPART];
@@ -506,12 +558,26 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
+    lignesVerifiees.push({ onglet: Global.ONGLET_DEPARTS, ligne: i + 2 });
+
     const heureDepart = ligne[idx.HEURE_DEPART];
     const heureRenseignee = heureDepart instanceof Date;
     const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureDepart) : null;
     const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
     const modeLibre = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
     const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
+
+    // ModeDépart renseigné mais abréviation absente de Paramètres — vide n'est
+    // jamais une erreur (trajet pas encore saisi), une valeur non reconnue si.
+    if (modeLibre && !codesConnus.has(station)) {
+      erreurs.push({
+        onglet: Global.ONGLET_DEPARTS,
+        ligne: i + 2, // +2 : ligne 1 = en-tête, i=0 -> ligne 2
+        nom: ligne[idx.NOM],
+        prenom: ligne[idx.PRENOM],
+        modeBrut: modeLibre
+      });
+    }
 
     // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
     // la personne reste visible, comme pour tout lieu non encore reconnu.
@@ -705,8 +771,12 @@ function genererPlannings(datesCiblees) {
   const codesConnus = obtenirCodesStationConnus(tableLieux);
   const clesAutorisees = new Set(dates.map(formatDateCle));
 
-  const mouvements = collecterArrivees(tableLieux, clesAutorisees, codesConnus)
-    .concat(collecterDeparts(tableLieux, clesAutorisees, codesConnus));
+  const erreurs = [];
+  const lignesVerifiees = [];
+  const mouvements = collecterArrivees(tableLieux, clesAutorisees, codesConnus, erreurs, lignesVerifiees)
+    .concat(collecterDeparts(tableLieux, clesAutorisees, codesConnus, erreurs, lignesVerifiees));
+
+  marquerLignesEnErreur(lignesVerifiees, erreurs); // rouge sur les lignes en erreur, remis en noir sinon
 
   const parOnglet = {};
   mouvements.forEach(mvt => {
@@ -716,6 +786,56 @@ function genererPlannings(datesCiblees) {
   });
 
   Object.keys(parOnglet).forEach(nomOnglet => ecrireMouvementsDansOnglet(nomOnglet, parOnglet[nomOnglet]));
+
+  if (erreurs.length > 0) afficherErreursDetection(erreurs);
+}
+
+/**
+ * Remet en noir toutes les lignes effectivement revérifiées cette génération
+ * (lignesVerifiees), puis repasse en rouge celles listées dans erreurs
+ * (abréviation non reconnue) — pour les repérer d'un coup d'œil, et qu'elles
+ * redeviennent noires dès que corrigées et régénérées. Ne touche pas aux
+ * lignes hors du périmètre de cette génération (dates non ciblées lors d'une
+ * génération partielle), pour ne jamais effacer à tort le signalement d'une
+ * ligne pas encore revérifiée.
+ * @param {Array<{onglet:string, ligne:number}>} lignesVerifiees
+ * @param {Array<{onglet:string, ligne:number}>} erreurs
+ */
+function marquerLignesEnErreur(lignesVerifiees, erreurs) {
+  [Global.ONGLET_ARRIVEES, Global.ONGLET_DEPARTS].forEach(nomOnglet => {
+    const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+    const derniereColonne = feuille.getLastColumn();
+    if (derniereColonne < 1) return;
+
+    lignesVerifiees
+      .filter(l => l.onglet === nomOnglet)
+      .forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor("#000000"));
+
+    erreurs
+      .filter(e => e.onglet === nomOnglet)
+      .forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor("#ff0000"));
+  });
+}
+
+/**
+ * Affiche une alerte listant toutes les personnes dont l'abréviation de lieu
+ * saisie (ModeArrivée/ModeDépart) ne correspond à aucune entrée de
+ * Paramètres. Les lignes concernées sont déjà mises en rouge dans ARRIVEES/
+ * DEPARTS par marquerLignesEnErreur() au moment de l'appel.
+ * @param {Array<{onglet:string, nom:string, prenom:string, modeBrut:string}>} erreurs
+ */
+function afficherErreursDetection(erreurs) {
+  const details = erreurs.map(e =>
+    "• " + e.onglet + " : " + e.nom + " " + e.prenom + " — abréviation \"" + e.modeBrut + "\" non reconnue dans Paramètres"
+  ).join("\n");
+
+  SpreadsheetApp.getUi().alert(
+    erreurs.length + " abréviation(s) non reconnue(s)",
+    "Ces personnes ont été incluses avec Heure Pick up vide, faute d'abréviation reconnue dans " +
+    "Paramètres. Corrige la saisie ou ajoute le code dans Paramètres puis régénère — les lignes " +
+    "concernées sont surlignées en rouge dans ARRIVEES/DEPARTS :\n\n" + details,
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 /**
