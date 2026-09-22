@@ -3,36 +3,41 @@
  * Aucune logique ici, uniquement des valeurs de configuration.
  */
 
-// En-têtes réels de la ligne 1 d'ARRIVEES/DEPARTS (mêmes colonnes des deux
-// côtés) — source de vérité unique des noms d'en-tête. ARRIVEES/DEPARTS et
-// Common.gs piochent seulement les colonnes dont ils ont besoin ci-dessous,
-// jamais de chaîne d'en-tête écrite en dur ailleurs dans le code.
+// En-têtes réels ET position fixe (0-based, "A" = 0) de la ligne 1
+// d'ARRIVEES/DEPARTS (mêmes colonnes des deux côtés) — source de vérité
+// unique. Le code lit ARRIVEES/DEPARTS par position fixe (jamais par
+// recherche dynamique du nom), donc verifierEnTetesSources() DOIT être
+// appelée avant toute lecture pour garantir que la position réelle
+// correspond encore au nom attendu (voir Common.gs).
 const COLONNES_SOURCE = {
-  NOM: "Nom",
-  PRENOM: "Prénom",
-  FONCTION: "Fonction",
-  TELEPHONE: "Téléphone",
-  DATE_ARRIVEE: "DateArrivée",
-  HEURE_ARRIVEE: "HeureArrivée",
-  MODE_ARRIVEE: "ModeArrivée",
-  DATE_DEPART: "DateDépart",
-  HEURE_DEPART: "HeureDépart",
-  MODE_DEPART: "ModeDépart",
-  REMARQUES: "Remarques",
-  HOTEL: "NomHotel",
-  CHECK_IN: "CheckIn",
-  CHECK_OUT: "CheckOut",
-  NUITS_EFFECTIVES: "NuitsEffectives",
-  NUITS_PEN_CHARGE: "NuitsPenCharge",
-  CHAMBRE: "Chambre",
-  NOTE2: "Note2",
-  COLONNE_1: "Colonne 1",
-  COLONNE_2: "Colonne 2",
-  COLONNE_3: "Colonne 3",
-  COLONNE_4: "Colonne 4"
+  NOM:              { nom: "Nom",             position: 0 },
+  PRENOM:           { nom: "Prénom",          position: 1 },
+  FONCTION:         { nom: "Fonction",        position: 2 },
+  TELEPHONE:        { nom: "Téléphone",       position: 3 },
+  DATE_ARRIVEE:     { nom: "DateArrivée",     position: 4 },
+  HEURE_ARRIVEE:    { nom: "HeureArrivée",    position: 5 },
+  MODE_ARRIVEE:     { nom: "ModeArrivée",     position: 6 },
+  DATE_DEPART:      { nom: "DateDépart",      position: 7 },
+  HEURE_DEPART:     { nom: "HeureDépart",     position: 8 },
+  MODE_DEPART:      { nom: "ModeDépart",      position: 9 },
+  REMARQUES:        { nom: "Remarques",       position: 10 },
+  HOTEL:            { nom: "NomHotel",        position: 11 },
+  CHECK_IN:         { nom: "CheckIn",         position: 12 },
+  CHECK_OUT:        { nom: "CheckOut",        position: 13 },
+  NUITS_EFFECTIVES: { nom: "NuitsEffectives", position: 14 },
+  NUITS_PEN_CHARGE: { nom: "NuitsPenCharge",  position: 15 },
+  CHAMBRE:          { nom: "Chambre",         position: 16 },
+  NOTE2:            { nom: "Note2",           position: 17 },
+  COLONNE_1:        { nom: "Colonne 1",       position: 18 },
+  COLONNE_2:        { nom: "Colonne 2",       position: 19 },
+  COLONNE_3:        { nom: "Colonne 3",       position: 20 },
+  COLONNE_4:        { nom: "Colonne 4",       position: 21 }
 };
 
-// En-têtes de l'onglet modèle Planning Source.
+// En-têtes de l'onglet modèle Planning Source. Contrairement à ARRIVEES/
+// DEPARTS, ces colonnes restent recherchées par nom (enTetes.indexOf) et non
+// par position fixe : Planning Source peut être réorganisé librement, seul
+// l'intitulé de chaque en-tête compte (voir ecrireMouvementsDansOnglet).
 const COLONNES_PLANNING = {
   NOM: "Nom",
   PRENOM: "Prénom",
@@ -55,7 +60,7 @@ const Global = {
   COLONNES_SOURCE: COLONNES_SOURCE,
   COLONNES_PLANNING: COLONNES_PLANNING,
 
-  // Colonnes utiles de la liste des arrivées : A à G + L
+  // Colonnes utiles de la liste des arrivées (chacune avec son nom ET sa position fixe)
   COLONNES_ARRIVEES: {
     NOM: COLONNES_SOURCE.NOM,
     PRENOM: COLONNES_SOURCE.PRENOM,
@@ -67,7 +72,7 @@ const Global = {
     HOTEL: COLONNES_SOURCE.HOTEL
   },
 
-  // Colonnes utiles de la liste des départs : A, B, C, D, H, I, J, L
+  // Colonnes utiles de la liste des départs (chacune avec son nom ET sa position fixe)
   COLONNES_DEPARTS: {
     NOM: COLONNES_SOURCE.NOM,
     PRENOM: COLONNES_SOURCE.PRENOM,

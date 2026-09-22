@@ -243,8 +243,8 @@ function obtenirCodesStationConnus(tableLieux) {
 function obtenirDatesDisponibles() {
   const cles = new Set();
 
-  ajouterDatesDepuisFeuille(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE, cles);
-  ajouterDatesDepuisFeuille(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART, cles);
+  ajouterDatesDepuisFeuille(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE.position, cles);
+  ajouterDatesDepuisFeuille(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART.position, cles);
 
   return Array.from(cles)
     .map(cle => Utilities.parseDate(cle, Session.getScriptTimeZone(), "dd/MM/yyyy"))
@@ -252,20 +252,18 @@ function obtenirDatesDisponibles() {
 }
 
 /**
- * Ajoute au Set `cles` la clé formatDateCle de chaque date valide trouvée dans la
- * colonne nomColonneDate de l'onglet nomOnglet.
+ * Ajoute au Set `cles` la clé formatDateCle de chaque date valide trouvée à la
+ * position positionColonneDate (fixe) de l'onglet nomOnglet.
  * @param {string} nomOnglet
- * @param {string} nomColonneDate
+ * @param {number} positionColonneDate
  * @param {Set<string>} cles
  */
-function ajouterDatesDepuisFeuille(nomOnglet, nomColonneDate, cles) {
+function ajouterDatesDepuisFeuille(nomOnglet, positionColonneDate, cles) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
   const donnees = feuille.getDataRange().getValues();
-  const enTetes = donnees[0];
-  const idxDate = enTetes.indexOf(nomColonneDate);
 
   donnees.slice(1).forEach(ligne => {
-    const date = ligne[idxDate];
+    const date = ligne[positionColonneDate];
     if (date instanceof Date) cles.add(formatDateCle(date));
   });
 }
@@ -281,31 +279,106 @@ function nomOngletPourDate(date) {
 }
 
 /**
+ * Convertit une position de colonne 0-based en lettre de colonne façon Sheets
+ * ("A", "B", ... "Z", "AA", ...), pour des messages d'erreur lisibles.
+ * @param {number} position
+ * @return {string}
+ */
+function lettreColonne(position) {
+  let n = position + 1;
+  let lettre = "";
+  while (n > 0) {
+    const reste = (n - 1) % 26;
+    lettre = String.fromCharCode(65 + reste) + lettre;
+    n = Math.floor((n - 1) / 26);
+  }
+  return lettre;
+}
+
+/**
+ * Vérifie que les en-têtes réels de nomOnglet correspondent, position par
+ * position, aux colonnes attendues (Object<cle, {nom, position}>). ARRIVEES/
+ * DEPARTS sont lus par position fixe (jamais par recherche dynamique du nom)
+ * pour que le script détecte immédiatement une colonne déplacée plutôt que
+ * d'écrire silencieusement au mauvais endroit.
+ * @param {string} nomOnglet
+ * @param {Object<string, {nom:string, position:number}>} colonnesAttendues
+ * @return {Array<{onglet:string, colonne:string, attendu:string, trouve:string}>} écarts trouvés (vide si tout correspond)
+ */
+function verifierEnTetesOnglet(nomOnglet, colonnesAttendues) {
+  const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+  if (!feuille) {
+    return [{ onglet: nomOnglet, colonne: "-", attendu: "(onglet existant)", trouve: "onglet introuvable" }];
+  }
+
+  const derniereColonne = feuille.getLastColumn();
+  const enTetes = derniereColonne > 0 ? feuille.getRange(1, 1, 1, derniereColonne).getValues()[0] : [];
+
+  const erreurs = [];
+  Object.keys(colonnesAttendues).forEach(cle => {
+    const attendu = colonnesAttendues[cle];
+    const entete = (enTetes[attendu.position] || "").toString().trim();
+    if (entete !== attendu.nom) {
+      erreurs.push({
+        onglet: nomOnglet,
+        colonne: lettreColonne(attendu.position),
+        attendu: attendu.nom,
+        trouve: entete || "(vide)"
+      });
+    }
+  });
+  return erreurs;
+}
+
+/**
+ * Vérifie les en-têtes d'ARRIVEES et DEPARTS avant toute génération. En cas
+ * d'écart, affiche une alerte claire listant chaque colonne concernée et
+ * retourne false — appelée en tout premier dans genererPlannings() pour que
+ * la génération s'arrête net plutôt que d'écrire une donnée au mauvais endroit.
+ * @return {boolean}
+ */
+function verifierEnTetesSources() {
+  const erreurs = verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES)
+    .concat(verifierEnTetesOnglet(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS));
+
+  if (erreurs.length === 0) return true;
+
+  const details = erreurs.map(e =>
+    "• " + e.onglet + ", colonne " + e.colonne + " : attendu \"" + e.attendu + "\", trouvé \"" + e.trouve + "\""
+  ).join("\n");
+
+  SpreadsheetApp.getUi().alert(
+    "Génération interrompue — en-têtes de colonnes incorrects",
+    "L'ordre des colonnes ne correspond plus à ce qu'attend le script. Corrige les en-têtes " +
+    "ci-dessous (ou remets-les à leur position d'origine) avant de relancer la génération :\n\n" + details,
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+  return false;
+}
+
+/**
  * Colore les lignes de ARRIVEES/DEPARTS par blocs consécutifs partageant la même
  * date, en alternant deux couleurs à chaque changement — pour repérer un jour du
  * suivant d'un coup d'œil. Suppose que les lignes sont déjà groupées par date
  * (lignes consécutives) ; si ce n'est plus le cas un jour, le bloc de couleur se
  * casserait à cet endroit, sans que ce soit un bug.
  * @param {string} nomOnglet
- * @param {string} nomColonneDate
+ * @param {number} positionColonneDate
  */
-function colorerBlocsParDate(nomOnglet, nomColonneDate) {
+function colorerBlocsParDate(nomOnglet, positionColonneDate) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
   const derniereLigne = feuille.getLastRow();
   const derniereColonne = feuille.getLastColumn();
   if (derniereLigne < 2) return;
 
   const donnees = feuille.getRange(1, 1, derniereLigne, derniereColonne).getValues();
-  const enTetes = donnees[0];
-  const idxDate = enTetes.indexOf(nomColonneDate);
-  if (idxDate === -1) return;
 
   const couleurs = ["#ffffff", "#f3f3f3"]; // blanc / gris clair — à ajuster au goût
   let indexCouleur = 0;
   let cleDatePrecedente = null;
 
   for (let i = 1; i < donnees.length; i++) {
-    const valeurDate = donnees[i][idxDate];
+    const valeurDate = donnees[i][positionColonneDate];
     const cleDate = (valeurDate instanceof Date) ? formatDateCle(valeurDate) : String(valeurDate);
 
     if (cleDate !== cleDatePrecedente) {
@@ -321,8 +394,8 @@ function colorerBlocsParDate(nomOnglet, nomColonneDate) {
  * Applique colorerBlocsParDate aux deux onglets sources, à chaque génération.
  */
 function colorerBlocsDeDatesDesSources() {
-  colorerBlocsParDate(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE);
-  colorerBlocsParDate(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART);
+  colorerBlocsParDate(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE.position);
+  colorerBlocsParDate(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART.position);
 }
 
 /**
@@ -342,11 +415,12 @@ function colorerBlocsDeDatesDesSources() {
 function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
-  const enTetes = donnees[0];
 
+  // Position fixe (pas de recherche dynamique) : verifierEnTetesSources() a
+  // déjà garanti, avant l'appel à cette fonction, que ces positions sont bonnes.
   const idx = {};
   Object.keys(Global.COLONNES_ARRIVEES).forEach(cle => {
-    idx[cle] = enTetes.indexOf(Global.COLONNES_ARRIVEES[cle]);
+    idx[cle] = Global.COLONNES_ARRIVEES[cle].position;
   });
 
   const mouvements = [];
@@ -413,11 +487,12 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus) {
 function collecterDeparts(tableLieux, datesAutorisees, codesConnus) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_DEPARTS);
   const donnees = feuille.getDataRange().getValues();
-  const enTetes = donnees[0];
 
+  // Position fixe (pas de recherche dynamique) : verifierEnTetesSources() a
+  // déjà garanti, avant l'appel à cette fonction, que ces positions sont bonnes.
   const idx = {};
   Object.keys(Global.COLONNES_DEPARTS).forEach(cle => {
-    idx[cle] = enTetes.indexOf(Global.COLONNES_DEPARTS[cle]);
+    idx[cle] = Global.COLONNES_DEPARTS[cle].position;
   });
 
   const mouvements = [];
@@ -611,14 +686,17 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 }
 
 /**
- * Orchestration : colore les sources par blocs de dates, lit la table
- * Paramètres unifiée une seule fois, en déduit les codes connus, collecte
- * arrivées et départs, puis écrit (ajout uniquement) dans les onglets
- * concernés. Un onglet n'est créé (copie de Planning Source) que pour une
- * date ayant au moins une personne.
+ * Orchestration : vérifie d'abord les en-têtes d'ARRIVEES/DEPARTS (arrête tout
+ * avec une alerte claire en cas d'écart), colore les sources par blocs de
+ * dates, lit la table Paramètres unifiée une seule fois, en déduit les codes
+ * connus, collecte arrivées et départs, puis écrit (ajout uniquement) dans
+ * les onglets concernés. Un onglet n'est créé (copie de Planning Source) que
+ * pour une date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
+  if (!verifierEnTetesSources()) return; // écart détecté, alerte déjà affichée
+
   colorerBlocsDeDatesDesSources(); // mise en forme des sources à chaque génération
 
   const dates = (datesCiblees && datesCiblees.length) ? datesCiblees : obtenirDatesDisponibles();
@@ -665,6 +743,16 @@ function supprimerPlanningsGeneres() {
  * pourtant avoir un code valide.
  */
 function diagnostiquerDetectionLieux() {
+  Logger.log("=== Vérification des en-têtes ARRIVEES/DEPARTS ===");
+  const erreursEnTetes = verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES)
+    .concat(verifierEnTetesOnglet(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS));
+  if (erreursEnTetes.length === 0) {
+    Logger.log("OK, toutes les colonnes attendues sont à la bonne position.");
+  } else {
+    erreursEnTetes.forEach(e => Logger.log("⚠️ " + e.onglet + ", colonne " + e.colonne +
+      " : attendu \"" + e.attendu + "\", trouvé \"" + e.trouve + "\""));
+  }
+
   const tableLieux = obtenirTableLieux();
   Logger.log("=== Table Paramètres lue ===");
   Logger.log(JSON.stringify(tableLieux, null, 2));
@@ -679,14 +767,13 @@ function diagnostiquerDetectionLieux() {
   [Global.ONGLET_ARRIVEES, Global.ONGLET_DEPARTS].forEach(nomOnglet => {
     const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
     const donnees = feuille.getDataRange().getValues();
-    const enTetes = donnees[0];
-    const colMode = nomOnglet === Global.ONGLET_ARRIVEES
+    const colonneMode = nomOnglet === Global.ONGLET_ARRIVEES
       ? Global.COLONNES_ARRIVEES.MODE_ARRIVEE
       : Global.COLONNES_DEPARTS.MODE_DEPART;
-    const idxMode = enTetes.indexOf(colMode);
-    const idxNom = enTetes.indexOf(Global.COLONNES_SOURCE.NOM);
+    const idxMode = colonneMode.position;
+    const idxNom = Global.COLONNES_SOURCE.NOM.position;
 
-    Logger.log("=== " + nomOnglet + " (colonne " + colMode + ") ===");
+    Logger.log("=== " + nomOnglet + " (colonne " + colonneMode.nom + ") ===");
     donnees.slice(1, 11).forEach(ligne => { // 10 premières lignes à titre d'échantillon
       if (!ligne[idxNom]) return;
       const modeLibre = ligne[idxMode] ? ligne[idxMode].toString().trim() : "";
