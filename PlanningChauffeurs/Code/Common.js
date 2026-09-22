@@ -268,15 +268,16 @@ function obtenirCodesStationConnus(tableLieux) {
 }
 
 /**
- * Déduit la liste des dates disponibles en scannant DateArrivée dans ARRIVEES et
- * DateDépart dans DEPARTS — il n'y a pas de liste de dates dédiée dans Paramètres.
+ * Déduit la liste des dates disponibles en scannant DateArrivée et DateDépart
+ * dans ARRIVEES (les deux jeux de colonnes vivent sur la même feuille) — il
+ * n'y a pas de liste de dates dédiée dans Paramètres.
  * @return {Date[]} dates triées chronologiquement
  */
 function obtenirDatesDisponibles() {
   const cles = new Set();
 
   ajouterDatesDepuisFeuille(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE.position, cles);
-  ajouterDatesDepuisFeuille(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART.position, cles);
+  ajouterDatesDepuisFeuille(Global.ONGLET_ARRIVEES, Global.COLONNES_DEPARTS.DATE_DEPART.position, cles);
 
   return Array.from(cles)
     .map(cle => Utilities.parseDate(cle, Session.getScriptTimeZone(), "dd/MM/yyyy"))
@@ -329,10 +330,10 @@ function lettreColonne(position) {
 
 /**
  * Vérifie que les en-têtes réels de nomOnglet correspondent, position par
- * position, aux colonnes attendues (Object<cle, {nom, position}>). ARRIVEES/
- * DEPARTS sont lus par position fixe (jamais par recherche dynamique du nom)
- * pour que le script détecte immédiatement une colonne déplacée plutôt que
- * d'écrire silencieusement au mauvais endroit.
+ * position, aux colonnes attendues (Object<cle, {nom, position}>). ARRIVEES
+ * est lue par position fixe (jamais par recherche dynamique du nom) pour que
+ * le script détecte immédiatement une colonne déplacée plutôt que d'écrire
+ * silencieusement au mauvais endroit.
  * @param {string} nomOnglet
  * @param {Object<string, {nom:string, position:number}>} colonnesAttendues
  * @return {Array<{onglet:string, colonne:string, attendu:string, trouve:string}>} écarts trouvés (vide si tout correspond)
@@ -363,15 +364,16 @@ function verifierEnTetesOnglet(nomOnglet, colonnesAttendues) {
 }
 
 /**
- * Vérifie les en-têtes d'ARRIVEES et DEPARTS avant toute génération. En cas
- * d'écart, affiche une alerte claire listant chaque colonne concernée et
- * retourne false — appelée en tout premier dans genererPlannings() pour que
- * la génération s'arrête net plutôt que d'écrire une donnée au mauvais endroit.
+ * Vérifie les en-têtes d'ARRIVEES (colonnes arrivée ET départ, toutes deux sur
+ * cette même feuille) avant toute génération. En cas d'écart, affiche une
+ * alerte claire listant chaque colonne concernée et retourne false — appelée
+ * en tout premier dans genererPlannings() pour que la génération s'arrête net
+ * plutôt que d'écrire une donnée au mauvais endroit.
  * @return {boolean}
  */
 function verifierEnTetesSources() {
   const erreurs = verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES)
-    .concat(verifierEnTetesOnglet(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS));
+    .concat(verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_DEPARTS));
 
   if (erreurs.length === 0) return true;
 
@@ -389,7 +391,7 @@ function verifierEnTetesSources() {
 }
 
 /**
- * Colore les lignes de ARRIVEES/DEPARTS par blocs consécutifs partageant la même
+ * Colore les lignes de nomOnglet par blocs consécutifs partageant la même
  * date, en alternant deux couleurs à chaque changement — pour repérer un jour du
  * suivant d'un coup d'œil. Suppose que les lignes sont déjà groupées par date
  * (lignes consécutives) ; si ce n'est plus le cas un jour, le bloc de couleur se
@@ -423,11 +425,11 @@ function colorerBlocsParDate(nomOnglet, positionColonneDate) {
 }
 
 /**
- * Applique colorerBlocsParDate aux deux onglets sources, à chaque génération.
+ * Colore ARRIVEES par blocs de DateArrivée, à chaque génération. Un seul
+ * onglet source désormais (les colonnes départ vivent sur les mêmes lignes).
  */
 function colorerBlocsDeDatesDesSources() {
   colorerBlocsParDate(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES.DATE_ARRIVEE.position);
-  colorerBlocsParDate(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS.DATE_DEPART.position);
 }
 
 /**
@@ -448,8 +450,8 @@ function colorerBlocsDeDatesDesSources() {
  * @param {Array<Object>} lignesVerifiees - complété (mutation) avec {onglet, ligne}
  *   pour chaque ligne effectivement passée en revue cette génération — sert à
  *   ne remettre en noir (marquerLignesEnErreur) que les lignes réellement
- *   revérifiées, pas tout ARRIVEES/DEPARTS, en cas de génération partielle
- *   (dates spécifiques) où d'autres lignes en erreur restent non revérifiées.
+ *   revérifiées, pas toute la feuille, en cas de génération partielle (dates
+ *   spécifiques) où d'autres lignes en erreur restent non revérifiées.
  * @return {Array<Object>} mouvements
  */
 function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
@@ -529,10 +531,12 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, li
 }
 
 /**
- * Parcourt DEPARTS et retourne toute personne dont DateDépart tombe dans
- * datesAutorisees — même si ModeDépart est encore vide ou non reconnu (mêmes
- * règles que collecterArrivees, y compris la règle Saint-Roch/PPM via
- * estExcluDepart).
+ * Parcourt ARRIVEES et retourne, pour toute personne dont DateDépart tombe
+ * dans datesAutorisees, son mouvement de départ — même si ModeDépart est
+ * encore vide ou non reconnu (mêmes règles que collecterArrivees, y compris
+ * la règle Saint-Roch/PPM via estExcluDepart). Lit les colonnes départ
+ * (H, I, J) de la même feuille et des mêmes lignes que collecterArrivees ;
+ * il n'y a plus d'onglet DEPARTS séparé.
  * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees
  * @param {Set<string>} codesConnus
@@ -545,7 +549,7 @@ function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, li
  * @return {Array<Object>} mouvements
  */
 function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_DEPARTS);
+  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
 
   // Position fixe (pas de recherche dynamique) : verifierEnTetesSources() a
@@ -566,7 +570,7 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lig
     const cleDate = formatDateCle(date);
     if (!datesAutorisees.has(cleDate)) return;
 
-    lignesVerifiees.push({ onglet: Global.ONGLET_DEPARTS, ligne: i + 2 });
+    lignesVerifiees.push({ onglet: Global.ONGLET_ARRIVEES, ligne: i + 2 });
 
     const heureDepart = ligne[idx.HEURE_DEPART];
     const heureRenseignee = heureDepart instanceof Date;
@@ -579,7 +583,7 @@ function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lig
     // jamais une erreur (trajet pas encore saisi), une valeur non reconnue si.
     if (modeLibre && !codesConnus.has(station)) {
       erreurs.push({
-        onglet: Global.ONGLET_DEPARTS,
+        onglet: Global.ONGLET_ARRIVEES,
         ligne: i + 2, // +2 : ligne 1 = en-tête, i=0 -> ligne 2
         nom: ligne[idx.NOM],
         prenom: ligne[idx.PRENOM],
@@ -700,7 +704,7 @@ function formaterOnglet(feuille) {
  * correcte même si l'ordre des colonnes du modèle Planning Source change. Ne
  * touche jamais aux colonnes manuelles (Chauffeur, Nb, Film/Projet, Statut,
  * Pays, Langue). Écrit aussi "Arrivée/Départ" (si la colonne existe dans le
- * modèle) selon que le mouvement provient d'ARRIVEES ou de DEPARTS.
+ * modèle) selon que le mouvement vient des colonnes arrivée ou départ.
  * @param {string} nomOnglet
  * @param {Array<Object>} mouvements
  */
@@ -776,12 +780,12 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
 }
 
 /**
- * Orchestration : vérifie d'abord les en-têtes d'ARRIVEES/DEPARTS (arrête tout
- * avec une alerte claire en cas d'écart), colore les sources par blocs de
- * dates, lit la table Paramètres unifiée une seule fois, en déduit les codes
- * connus, collecte arrivées et départs, puis écrit (ajout uniquement) dans
- * les onglets concernés. Un onglet n'est créé (copie de Planning Source) que
- * pour une date ayant au moins une personne.
+ * Orchestration : vérifie d'abord les en-têtes d'ARRIVEES (arrête tout avec
+ * une alerte claire en cas d'écart), colore ARRIVEES par blocs de dates, lit
+ * la table Paramètres unifiée une seule fois, en déduit les codes connus,
+ * collecte arrivées et départs (les deux depuis ARRIVEES), puis écrit (ajout
+ * uniquement) dans les onglets concernés. Un onglet n'est créé (copie de
+ * Planning Source) que pour une date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
@@ -821,31 +825,26 @@ function genererPlannings(datesCiblees) {
  * redeviennent noires dès que corrigées et régénérées. Ne touche pas aux
  * lignes hors du périmètre de cette génération (dates non ciblées lors d'une
  * génération partielle), pour ne jamais effacer à tort le signalement d'une
- * ligne pas encore revérifiée.
+ * ligne pas encore revérifiée. Un seul onglet désormais (ARRIVEES) : une
+ * ligne peut être revérifiée côté arrivée et/ou côté départ, tout finit sur
+ * la même ligne physique.
  * @param {Array<{onglet:string, ligne:number}>} lignesVerifiees
  * @param {Array<{onglet:string, ligne:number}>} erreurs
  */
 function marquerLignesEnErreur(lignesVerifiees, erreurs) {
-  [Global.ONGLET_ARRIVEES, Global.ONGLET_DEPARTS].forEach(nomOnglet => {
-    const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
-    const derniereColonne = feuille.getLastColumn();
-    if (derniereColonne < 1) return;
+  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
+  const derniereColonne = feuille.getLastColumn();
+  if (derniereColonne < 1) return;
 
-    lignesVerifiees
-      .filter(l => l.onglet === nomOnglet)
-      .forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor("#000000"));
-
-    erreurs
-      .filter(e => e.onglet === nomOnglet)
-      .forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor("#ff0000"));
-  });
+  lignesVerifiees.forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor("#000000"));
+  erreurs.forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor("#ff0000"));
 }
 
 /**
  * Affiche une alerte listant toutes les personnes dont l'abréviation de lieu
  * saisie (ModeArrivée/ModeDépart) ne correspond à aucune entrée de
- * Paramètres. Les lignes concernées sont déjà mises en rouge dans ARRIVEES/
- * DEPARTS par marquerLignesEnErreur() au moment de l'appel.
+ * Paramètres. Les lignes concernées sont déjà mises en rouge dans ARRIVEES
+ * par marquerLignesEnErreur() au moment de l'appel.
  * @param {Array<{onglet:string, nom:string, prenom:string, modeBrut:string}>} erreurs
  */
 function afficherErreursDetection(erreurs) {
@@ -857,7 +856,7 @@ function afficherErreursDetection(erreurs) {
     erreurs.length + " abréviation(s) non reconnue(s)",
     "Ces personnes ont été incluses avec Heure Pick up vide, faute d'abréviation reconnue dans " +
     "Paramètres. Corrige la saisie ou ajoute le code dans Paramètres puis régénère — les lignes " +
-    "concernées sont surlignées en rouge dans ARRIVEES/DEPARTS :\n\n" + details,
+    "concernées sont surlignées en rouge dans ARRIVEES :\n\n" + details,
     SpreadsheetApp.getUi().ButtonSet.OK
   );
 }
@@ -881,15 +880,15 @@ function supprimerPlanningsGeneres() {
 /**
  * Outil de diagnostic manuel (menu → "Diagnostic détection des lieux") : logue
  * la table Paramètres telle que lue par le script, alerte si elle est vide, et
- * pour les 10 premières lignes d'ARRIVEES/DEPARTS logue le mode brut saisi, le
- * code détecté, et si ce code matche bien une entrée de Paramètres. À utiliser
- * quand Heure Pick up/Lieu Pick up restent vides pour des lignes qui semblent
- * pourtant avoir un code valide.
+ * pour les 10 premières lignes d'ARRIVEES logue le mode brut saisi côté
+ * arrivée ET départ, le code détecté, et si ce code matche bien une entrée de
+ * Paramètres. À utiliser quand Heure Pick up/Lieu Pick up restent vides pour
+ * des lignes qui semblent pourtant avoir un code valide.
  */
 function diagnostiquerDetectionLieux() {
-  Logger.log("=== Vérification des en-têtes ARRIVEES/DEPARTS ===");
+  Logger.log("=== Vérification des en-têtes ARRIVEES ===");
   const erreursEnTetes = verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES)
-    .concat(verifierEnTetesOnglet(Global.ONGLET_DEPARTS, Global.COLONNES_DEPARTS));
+    .concat(verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_DEPARTS));
   if (erreursEnTetes.length === 0) {
     Logger.log("OK, toutes les colonnes attendues sont à la bonne position.");
   } else {
@@ -908,23 +907,26 @@ function diagnostiquerDetectionLieux() {
 
   const codesConnus = obtenirCodesStationConnus(tableLieux);
 
-  [Global.ONGLET_ARRIVEES, Global.ONGLET_DEPARTS].forEach(nomOnglet => {
-    const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
-    const donnees = feuille.getDataRange().getValues();
-    const colonneMode = nomOnglet === Global.ONGLET_ARRIVEES
-      ? Global.COLONNES_ARRIVEES.MODE_ARRIVEE
-      : Global.COLONNES_DEPARTS.MODE_DEPART;
-    const idxMode = colonneMode.position;
-    const idxNom = Global.COLONNES_SOURCE.NOM.position;
+  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
+  const donnees = feuille.getDataRange().getValues();
+  const idxNom = Global.COLONNES_SOURCE.NOM.position;
+  const idxModeArrivee = Global.COLONNES_ARRIVEES.MODE_ARRIVEE.position;
+  const idxModeDepart = Global.COLONNES_DEPARTS.MODE_DEPART.position;
 
-    Logger.log("=== " + nomOnglet + " (colonne " + colonneMode.nom + ") ===");
-    donnees.slice(1, 11).forEach(ligne => { // 10 premières lignes à titre d'échantillon
-      if (!ligne[idxNom]) return;
-      const modeLibre = ligne[idxMode] ? ligne[idxMode].toString().trim() : "";
-      const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
-      const matche = station && tableLieux.hasOwnProperty(station);
-      Logger.log(ligne[idxNom] + " | mode brut: \"" + modeLibre + "\" -> détecté: \"" + station +
-        "\" -> " + (matche ? "OK, trouvé dans Paramètres" : "PAS DE MATCH"));
-    });
+  Logger.log("=== " + Global.ONGLET_ARRIVEES + " ===");
+  donnees.slice(1, 11).forEach(ligne => { // 10 premières lignes à titre d'échantillon
+    if (!ligne[idxNom]) return;
+
+    const modeArrivee = ligne[idxModeArrivee] ? ligne[idxModeArrivee].toString().trim() : "";
+    const stationArrivee = extraireStationDepuisModeLibre(modeArrivee, codesConnus);
+    const matcheArrivee = stationArrivee && tableLieux.hasOwnProperty(stationArrivee);
+    Logger.log(ligne[idxNom] + " | ARRIVÉE mode brut: \"" + modeArrivee + "\" -> détecté: \"" + stationArrivee +
+      "\" -> " + (matcheArrivee ? "OK, trouvé dans Paramètres" : "PAS DE MATCH"));
+
+    const modeDepart = ligne[idxModeDepart] ? ligne[idxModeDepart].toString().trim() : "";
+    const stationDepart = extraireStationDepuisModeLibre(modeDepart, codesConnus);
+    const matcheDepart = stationDepart && tableLieux.hasOwnProperty(stationDepart);
+    Logger.log(ligne[idxNom] + " | DÉPART mode brut: \"" + modeDepart + "\" -> détecté: \"" + stationDepart +
+      "\" -> " + (matcheDepart ? "OK, trouvé dans Paramètres" : "PAS DE MATCH"));
   });
 }

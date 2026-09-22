@@ -4,11 +4,13 @@
  */
 
 // En-têtes réels ET position fixe (0-based, "A" = 0) de la ligne 1
-// d'ARRIVEES/DEPARTS (mêmes colonnes des deux côtés) — source de vérité
-// unique. Le code lit ARRIVEES/DEPARTS par position fixe (jamais par
-// recherche dynamique du nom), donc verifierEnTetesSources() DOIT être
-// appelée avant toute lecture pour garantir que la position réelle
-// correspond encore au nom attendu (voir Common.gs).
+// d'ARRIVEES — source de vérité unique. ARRIVEES contient à la fois les
+// colonnes d'arrivée (E-G) et de départ (H-J) pour une même personne sur une
+// même ligne ; il n'y a plus d'onglet DEPARTS séparé. Le code lit ARRIVEES
+// par position fixe (jamais par recherche dynamique du nom), donc
+// verifierEnTetesSources() DOIT être appelée avant toute lecture pour
+// garantir que la position réelle correspond encore au nom attendu (voir
+// Common.gs).
 const COLONNES_SOURCE = {
   NOM:              { nom: "Nom",             position: 0 },
   PRENOM:           { nom: "Prénom",          position: 1 },
@@ -54,7 +56,6 @@ const Global = {
 
   ONGLET_PARAMETRES: "Paramètres",
   ONGLET_ARRIVEES: "ARRIVEES",
-  ONGLET_DEPARTS: "DEPARTS",
   ONGLET_PLANNING_SOURCE: "Planning Source",
 
   COLONNES_SOURCE: COLONNES_SOURCE,
@@ -72,7 +73,7 @@ const Global = {
     HOTEL: COLONNES_SOURCE.HOTEL
   },
 
-  // Colonnes utiles de la liste des départs (chacune avec son nom ET sa position fixe)
+  // Colonnes utiles côté départ, dans ARRIVEES (même feuille, mêmes lignes que COLONNES_ARRIVEES)
   COLONNES_DEPARTS: {
     NOM: COLONNES_SOURCE.NOM,
     PRENOM: COLONNES_SOURCE.PRENOM,
