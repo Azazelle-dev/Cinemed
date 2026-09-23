@@ -808,14 +808,18 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
     nouvellesLignes.push(ligne);
   });
 
-  if (nouvellesLignes.length === 0) return; // rien de nouveau, on ne touche à rien
+  // On n'écrit/trie que s'il y a du nouveau, MAIS le formatage doit toujours
+  // s'exécuter ensuite — sinon un changement de couleur (ou de tout autre
+  // réglage de formaterOnglet) ne se voit jamais tant qu'aucune nouvelle
+  // personne n'est ajoutée à l'onglet.
+  if (nouvellesLignes.length > 0) {
+    feuille.getRange(feuille.getLastRow() + 1, 1, nouvellesLignes.length, derniereColonne)
+      .setValues(nouvellesLignes);
 
-  feuille.getRange(feuille.getLastRow() + 1, 1, nouvellesLignes.length, derniereColonne)
-    .setValues(nouvellesLignes);
-
-  const derniereLigneApres = feuille.getLastRow();
-  feuille.getRange(2, 1, derniereLigneApres - 1, derniereColonne)
-    .sort({ column: idxHeurePickup, ascending: true });
+    const derniereLigneApres = feuille.getLastRow();
+    feuille.getRange(2, 1, derniereLigneApres - 1, derniereColonne)
+      .sort({ column: idxHeurePickup, ascending: true });
+  }
 
   formaterOnglet(feuille);
 }
