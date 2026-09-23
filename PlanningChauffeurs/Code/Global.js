@@ -97,10 +97,10 @@ const Global = {
     ENTETE_FOND: "#1c4587",     // fond de la ligne d'en-tête, toujours bleu
     ENTETE_TEXTE: "#ffffff",    // texte de la ligne d'en-tête, toujours blanc
     BORDURE_DONNEES: "#cccccc", // bordure fine des cellules de données
-    LIGNE_DEPART: "#f3f3f3",    // fond d'une ligne "Départ" (gris clair)
-    LIGNE_ARRIVEE: "#ffffff",   // fond d'une ligne "Arrivée" (blanc)
-    SOURCE_BLOC_1: "#ffffff",   // ARRIVEES : blocs de dates alternés (blanc)
-    SOURCE_BLOC_2: "#f3f3f3",   // ARRIVEES : blocs de dates alternés (gris clair)
+    LIGNE_DEPART: "#e4c6bc",    // fond d'une ligne "Départ" (gris clair)
+    LIGNE_ARRIVEE: "#cbcbda",   // fond d'une ligne "Arrivée" (blanc)
+    SOURCE_BLOC_1: "#cbcbda",   // ARRIVEES : blocs de dates alternés (blanc)
+    SOURCE_BLOC_2: "#e4c6bc",   // ARRIVEES : blocs de dates alternés (gris clair)
     TEXTE_NORMAL: "#000000",    // ARRIVEES : texte d'une ligne sans erreur
     TEXTE_ERREUR: "#ff0000"     // ARRIVEES : texte d'une ligne à abréviation non reconnue
   }

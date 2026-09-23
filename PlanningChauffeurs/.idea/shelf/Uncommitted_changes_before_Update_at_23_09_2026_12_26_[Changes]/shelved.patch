@@ -1,0 +1,570 @@
+Index: Code/Global.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>/**\r\n * Global.gs — Constantes globales du projet.\r\n * Aucune logique ici, uniquement des valeurs de configuration.\r\n */\r\n\r\n// En-têtes réels ET position fixe (0-based, \"A\" = 0) de la ligne 1\r\n// d'ARRIVEES — source de vérité unique. ARRIVEES contient à la fois les\r\n// colonnes d'arrivée (E-G) et de départ (H-J) pour une même personne sur une\r\n// même ligne ; il n'y a plus d'onglet DEPARTS séparé. Le code lit ARRIVEES\r\n// par position fixe (jamais par recherche dynamique du nom), donc\r\n// verifierEnTetesSources() DOIT être appelée avant toute lecture pour\r\n// garantir que la position réelle correspond encore au nom attendu (voir\r\n// Common.gs).\r\nconst COLONNES_SOURCE = {\r\n  NOM:              { nom: \"Nom\",             position: 0 },\r\n  PRENOM:           { nom: \"Prénom\",          position: 1 },\r\n  FONCTION:         { nom: \"Fonction\",        position: 2 },\r\n  TELEPHONE:        { nom: \"Téléphone\",       position: 3 },\r\n  DATE_ARRIVEE:     { nom: \"DateArrivée\",     position: 4 },\r\n  HEURE_ARRIVEE:    { nom: \"HeureArrivée\",    position: 5 },\r\n  MODE_ARRIVEE:     { nom: \"ModeArrivée\",     position: 6 },\r\n  DATE_DEPART:      { nom: \"DateDépart\",      position: 7 },\r\n  HEURE_DEPART:     { nom: \"HeureDépart\",     position: 8 },\r\n  MODE_DEPART:      { nom: \"ModeDépart\",      position: 9 },\r\n  REMARQUES:        { nom: \"Remarques\",       position: 10 },\r\n  HOTEL:            { nom: \"NomHotel\",        position: 11 },\r\n  CHECK_IN:         { nom: \"CheckIn\",         position: 12 },\r\n  CHECK_OUT:        { nom: \"CheckOut\",        position: 13 },\r\n  NUITS_EFFECTIVES: { nom: \"NuitsEffectives\", position: 14 },\r\n  NUITS_PEN_CHARGE: { nom: \"NuitsPenCharge\",  position: 15 },\r\n  CHAMBRE:          { nom: \"Chambre\",         position: 16 },\r\n  NOTE2:            { nom: \"Note2\",           position: 17 },\r\n  COLONNE_1:        { nom: \"Colonne 1\",       position: 18 },\r\n  COLONNE_2:        { nom: \"Colonne 2\",       position: 19 },\r\n  COLONNE_3:        { nom: \"Colonne 3\",       position: 20 },\r\n  COLONNE_4:        { nom: \"Colonne 4\",       position: 21 }\r\n};\r\n\r\n// En-têtes de l'onglet modèle Planning Source. Contrairement à ARRIVEES/\r\n// DEPARTS, ces colonnes restent recherchées par nom (enTetes.indexOf) et non\r\n// par position fixe : Planning Source peut être réorganisé librement, seul\r\n// l'intitulé de chaque en-tête compte (voir ecrireMouvementsDansOnglet).\r\nconst COLONNES_PLANNING = {\r\n  NOM: \"Nom\",\r\n  PRENOM: \"Prénom\",\r\n  FONCTION: \"Fonction\",\r\n  TELEPHONE: \"Téléphone\",\r\n  HEURE_PICKUP: \"Heure Pick up\",\r\n  LIEU_PICKUP: \"Lieu Pick up\",\r\n  LIEU_DEPOSE: \"Lieu de dépose\",\r\n  HEURE_DEPART: \"Heure départ\",\r\n  ORIGINE: \"Arrivée/Départ\"\r\n};\r\n\r\nconst Global = {\r\n\r\n  ONGLET_PARAMETRES: \"Paramètres\",\r\n  ONGLET_ARRIVEES: \"ARRIVEES\",\r\n  ONGLET_PLANNING_SOURCE: \"Planning Source\",\r\n\r\n  COLONNES_SOURCE: COLONNES_SOURCE,\r\n  COLONNES_PLANNING: COLONNES_PLANNING,\r\n\r\n  // Colonnes utiles de la liste des arrivées (chacune avec son nom ET sa position fixe)\r\n  COLONNES_ARRIVEES: {\r\n    NOM: COLONNES_SOURCE.NOM,\r\n    PRENOM: COLONNES_SOURCE.PRENOM,\r\n    FONCTION: COLONNES_SOURCE.FONCTION,\r\n    TELEPHONE: COLONNES_SOURCE.TELEPHONE,\r\n    DATE_ARRIVEE: COLONNES_SOURCE.DATE_ARRIVEE,\r\n    HEURE_ARRIVEE: COLONNES_SOURCE.HEURE_ARRIVEE,\r\n    MODE_ARRIVEE: COLONNES_SOURCE.MODE_ARRIVEE,\r\n    HOTEL: COLONNES_SOURCE.HOTEL\r\n  },\r\n\r\n  // Colonnes utiles côté départ, dans ARRIVEES (même feuille, mêmes lignes que COLONNES_ARRIVEES)\r\n  COLONNES_DEPARTS: {\r\n    NOM: COLONNES_SOURCE.NOM,\r\n    PRENOM: COLONNES_SOURCE.PRENOM,\r\n    FONCTION: COLONNES_SOURCE.FONCTION,\r\n    TELEPHONE: COLONNES_SOURCE.TELEPHONE,\r\n    DATE_DEPART: COLONNES_SOURCE.DATE_DEPART,\r\n    HEURE_DEPART: COLONNES_SOURCE.HEURE_DEPART,\r\n    MODE_DEPART: COLONNES_SOURCE.MODE_DEPART,\r\n    HOTEL: COLONNES_SOURCE.HOTEL\r\n  },\r\n\r\n  CODES_MOYEN_PROPRE: [\"PPM\"], // valeurs qui excluent totalement la personne du planning\r\n\r\n  JOURS_FR: [\"DIMANCHE\", \"LUNDI\", \"MARDI\", \"MERCREDI\", \"JEUDI\", \"VENDREDI\", \"SAMEDI\"],\r\n\r\n  // Toutes les couleurs utilisées par le script (plannings générés et sources)\r\n  COULEURS: {\r\n    ENTETE_FOND: \"#1c4587\",     // fond de la ligne d'en-tête, toujours bleu\r\n    ENTETE_TEXTE: \"#ffffff\",    // texte de la ligne d'en-tête, toujours blanc\r\n    BORDURE_DONNEES: \"#cccccc\", // bordure fine des cellules de données\r\n    LIGNE_DEPART: \"#f3f3f3\",    // fond d'une ligne \"Départ\" (gris clair)\r\n    LIGNE_ARRIVEE: \"#ffffff\",   // fond d'une ligne \"Arrivée\" (blanc)\r\n    SOURCE_BLOC_1: \"#ffffff\",   // ARRIVEES : blocs de dates alternés (blanc)\r\n    SOURCE_BLOC_2: \"#f3f3f3\",   // ARRIVEES : blocs de dates alternés (gris clair)\r\n    TEXTE_NORMAL: \"#000000\",    // ARRIVEES : texte d'une ligne sans erreur\r\n    TEXTE_ERREUR: \"#ff0000\"     // ARRIVEES : texte d'une ligne à abréviation non reconnue\r\n  }\r\n};\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/Code/Global.js b/Code/Global.js
+--- a/Code/Global.js	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
++++ b/Code/Global.js	(date 1790158598372)
+@@ -94,10 +94,10 @@
+     ENTETE_FOND: "#1c4587",     // fond de la ligne d'en-tête, toujours bleu
+     ENTETE_TEXTE: "#ffffff",    // texte de la ligne d'en-tête, toujours blanc
+     BORDURE_DONNEES: "#cccccc", // bordure fine des cellules de données
+-    LIGNE_DEPART: "#f3f3f3",    // fond d'une ligne "Départ" (gris clair)
++    LIGNE_DEPART: "#cc965a",    // fond d'une ligne "Départ" (gris clair)
+     LIGNE_ARRIVEE: "#ffffff",   // fond d'une ligne "Arrivée" (blanc)
+     SOURCE_BLOC_1: "#ffffff",   // ARRIVEES : blocs de dates alternés (blanc)
+-    SOURCE_BLOC_2: "#f3f3f3",   // ARRIVEES : blocs de dates alternés (gris clair)
++    SOURCE_BLOC_2: "#cc965a",   // ARRIVEES : blocs de dates alternés (gris clair)
+     TEXTE_NORMAL: "#000000",    // ARRIVEES : texte d'une ligne sans erreur
+     TEXTE_ERREUR: "#ff0000"     // ARRIVEES : texte d'une ligne à abréviation non reconnue
+   }
+Index: .idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch b/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
++++ /dev/null	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
+@@ -1,157 +0,0 @@
+-Index: ../Main.gs
+-===================================================================
+-diff --git a/../Main.gs b/../Main.gs
+-deleted file mode 100644
+---- a/../Main.gs	(revision 7e1960bec9c7d0224a89311bc6fd001d7f36ce20)
+-+++ /dev/null	(revision 7e1960bec9c7d0224a89311bc6fd001d7f36ce20)
+-@@ -1,61 +0,0 @@
+--/**
+-- * Main.gs — Point d'entrée du script.
+-- * Menu (onOpen) et actions du menu — aucun déclencheur automatique : la
+-- * génération se fait uniquement à la demande, via le menu.
+-- */
+--
+--/**
+-- * Ajoute le menu personnalisé "Planning Chauffeurs" à l'ouverture du Sheet.
+-- */
+--function onOpen() {
+--  SpreadsheetApp.getUi()
+--    .createMenu("Planning Chauffeurs")
+--    .addItem("Générer tous les plannings", "menuGenererTout")
+--    .addItem("Générer des dates spécifiques…", "menuOuvrirSelectionDates")
+--    .addToUi();
+--}
+--
+--/**
+-- * Action de menu : génère/met à jour les plannings pour toutes les dates de Paramètres.
+-- * Restaure l'onglet actif de départ une fois la génération terminée.
+-- */
+--function menuGenererTout() {
+--  const ongletDeDepart = SpreadsheetApp.getActive().getActiveSheet();
+--
+--  genererPlannings(); // pas d'argument = toutes les dates de Paramètres
+--
+--  SpreadsheetApp.getActive().setActiveSheet(ongletDeDepart);
+--  SpreadsheetApp.getUi().alert("Tous les plannings ont été générés/mis à jour.");
+--}
+--
+--/**
+-- * Action de menu : ouvre la fenêtre de sélection de dates.
+-- */
+--function menuOuvrirSelectionDates() {
+--  const html = HtmlService.createHtmlOutputFromFile("SelectionDates").setWidth(300).setHeight(400);
+--  SpreadsheetApp.getUi().showModalDialog(html, "Choisir les dates à générer");
+--}
+--
+--/**
+-- * Appelée depuis SelectionDates.html pour récupérer la liste des dates à afficher.
+-- * @return {string[]} dates formatées "dd/MM/yyyy"
+-- */
+--function getDatesPourAffichage() {
+--  return obtenirDatesDisponibles().map(formatDateCle);
+--}
+--
+--/**
+-- * Appelée depuis SelectionDates.html quand l'utilisateur valide sa sélection.
+-- * Ignore toute valeur qui ne fait pas partie des dates officielles de Paramètres.
+-- * Restaure l'onglet actif de départ une fois la génération terminée.
+-- * @param {string[]} datesTexte - dates au format "dd/MM/yyyy"
+-- */
+--function genererOngletsSelectionnes(datesTexte) {
+--  const ongletDeDepart = SpreadsheetApp.getActive().getActiveSheet();
+--
+--  const toutesLesDates = obtenirDatesDisponibles();
+--  const datesValides = toutesLesDates.filter(d => datesTexte.includes(formatDateCle(d)));
+--  genererPlannings(datesValides);
+--
+--  SpreadsheetApp.getActive().setActiveSheet(ongletDeDepart);
+--}
+-Index: ../SelectionDates.html
+-===================================================================
+-diff --git a/../SelectionDates.html b/../SelectionDates.html
+-deleted file mode 100644
+---- a/../SelectionDates.html	(revision 7e1960bec9c7d0224a89311bc6fd001d7f36ce20)
+-+++ /dev/null	(revision 7e1960bec9c7d0224a89311bc6fd001d7f36ce20)
+-@@ -1,37 +0,0 @@
+--<!DOCTYPE html>
+--<html>
+--  <head>
+--    <base target="_top">
+--    <style>
+--      body { font-family: Arial, sans-serif; font-size: 13px; padding: 8px; }
+--      label { display: block; margin-bottom: 6px; }
+--      button { margin-top: 12px; }
+--    </style>
+--  </head>
+--  <body>
+--    <div id="liste">Chargement des dates…</div>
+--    <button onclick="valider()">Générer</button>
+--
+--    <script>
+--      google.script.run.withSuccessHandler(afficherDates).getDatesPourAffichage();
+--
+--      function afficherDates(dates) {
+--        const conteneur = document.getElementById("liste");
+--        if (!dates.length) {
+--          conteneur.innerHTML = "Aucune date trouvée dans l'onglet Paramètres.";
+--          return;
+--        }
+--        conteneur.innerHTML = dates.map(d =>
+--          `<label><input type="checkbox" value="${d}"> ${d}</label>`
+--        ).join("");
+--      }
+--
+--      function valider() {
+--        const cases = document.querySelectorAll("input[type=checkbox]:checked");
+--        const datesChoisies = Array.from(cases).map(c => c.value);
+--        google.script.run.withSuccessHandler(() => google.script.host.close())
+--          .genererOngletsSelectionnes(datesChoisies);
+--      }
+--    </script>
+--  </body>
+--</html>
+-Index: ../Global.gs
+-===================================================================
+-diff --git a/../Global.gs b/../Global.gs
+-deleted file mode 100644
+---- a/../Global.gs	(revision 7e1960bec9c7d0224a89311bc6fd001d7f36ce20)
+-+++ /dev/null	(revision 7e1960bec9c7d0224a89311bc6fd001d7f36ce20)
+-@@ -1,38 +0,0 @@
+--/**
+-- * Global.gs — Constantes globales du projet.
+-- * Aucune logique ici, uniquement des valeurs de configuration.
+-- */
+--
+--const Global = {
+--
+--  ONGLET_PARAMETRES: "Paramètres",
+--  ONGLET_ARRIVEES: "ARRIVEES",
+--  ONGLET_DEPARTS: "DEPARTS",
+--  ONGLET_PLANNING_SOURCE: "Planning Source",
+--
+--  // Colonnes utiles de la liste des arrivées (A→G + L)
+--  COLONNES_ARRIVEES: {
+--    NOM: "Nom",
+--    PRENOM: "Prénom",
+--    FONCTION: "Fonction",
+--    TELEPHONE: "Téléphone",
+--    DATE_ARRIVEE: "DateArrivée",
+--    HEURE_ARRIVEE: "HeureArrivée",
+--    MODE_ARRIVEE: "ModeArrivée",
+--    HOTEL: "NomHotel"
+--  },
+--
+--  // Colonnes utiles de la liste des départs (A→D + H,I,J + L)
+--  COLONNES_DEPARTS: {
+--    NOM: "Nom",
+--    PRENOM: "Prénom",
+--    FONCTION: "Fonction",
+--    TELEPHONE: "Téléphone",
+--    DATE_DEPART: "DateDépart",
+--    HEURE_DEPART: "HeureDépart",
+--    MODE_DEPART: "ModeDépart",
+--    HOTEL: "NomHotel"
+--  },
+--
+--  JOURS_FR: ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"]
+--};
+Index: .idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14__Changes_.xml
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14__Changes_.xml b/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14__Changes_.xml
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14__Changes_.xml	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
++++ /dev/null	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
+@@ -1,4 +0,0 @@
+-<changelist name="Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]" date="1789398899053" recycled="true" deleted="true">
+-  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch" />
+-  <option name="DESCRIPTION" value="Uncommitted changes before Checkout at 14/09/2026 17:14 [Changes]" />
+-</changelist>
+\ No newline at end of file
+Index: .idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09__Changes_.xml
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09__Changes_.xml b/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09__Changes_.xml
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09__Changes_.xml	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
++++ /dev/null	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
+@@ -1,4 +0,0 @@
+-<changelist name="Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]" date="1789398587082" recycled="true" deleted="true">
+-  <option name="PATH" value="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch" />
+-  <option name="DESCRIPTION" value="Uncommitted changes before Update at 14/09/2026 17:09 [Changes]" />
+-</changelist>
+\ No newline at end of file
+Index: .idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch
+===================================================================
+diff --git a/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch b/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch
+deleted file mode 100644
+--- a/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
++++ /dev/null	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
+@@ -1,159 +0,0 @@
+-Index: ../Main.gs
+-===================================================================
+-diff --git a/../Main.gs b/../Main.gs
+-deleted file mode 100644
+---- a/../Main.gs	(revision 331a1c97466b66d0bb7891cba48802216e6d8e0c)
+-+++ /dev/null	(revision 331a1c97466b66d0bb7891cba48802216e6d8e0c)
+-@@ -1,61 +0,0 @@
+--/**
+-- * Main.gs — Point d'entrée du script.
+-- * Menu (onOpen) et actions du menu — aucun déclencheur automatique : la
+-- * génération se fait uniquement à la demande, via le menu.
+-- */
+--
+--/**
+-- * Ajoute le menu personnalisé "Planning Chauffeurs" à l'ouverture du Sheet.
+-- */
+--function onOpen() {
+--  SpreadsheetApp.getUi()
+--    .createMenu("Planning Chauffeurs")
+--    .addItem("Générer tous les plannings", "menuGenererTout")
+--    .addItem("Générer des dates spécifiques…", "menuOuvrirSelectionDates")
+--    .addToUi();
+--}
+--
+--/**
+-- * Action de menu : génère/met à jour les plannings pour toutes les dates de Paramètres.
+-- * Restaure l'onglet actif de départ une fois la génération terminée.
+-- */
+--function menuGenererTout() {
+--  const ongletDeDepart = SpreadsheetApp.getActive().getActiveSheet();
+--
+--  genererPlannings(); // pas d'argument = toutes les dates de Paramètres
+--
+--  SpreadsheetApp.getActive().setActiveSheet(ongletDeDepart);
+--  SpreadsheetApp.getUi().alert("Tous les plannings ont été générés/mis à jour.");
+--}
+--
+--/**
+-- * Action de menu : ouvre la fenêtre de sélection de dates.
+-- */
+--function menuOuvrirSelectionDates() {
+--  const html = HtmlService.createHtmlOutputFromFile("SelectionDates").setWidth(300).setHeight(400);
+--  SpreadsheetApp.getUi().showModalDialog(html, "Choisir les dates à générer");
+--}
+--
+--/**
+-- * Appelée depuis SelectionDates.html pour récupérer la liste des dates à afficher.
+-- * @return {string[]} dates formatées "dd/MM/yyyy"
+-- */
+--function getDatesPourAffichage() {
+--  return obtenirDatesDisponibles().map(formatDateCle);
+--}
+--
+--/**
+-- * Appelée depuis SelectionDates.html quand l'utilisateur valide sa sélection.
+-- * Ignore toute valeur qui ne fait pas partie des dates officielles de Paramètres.
+-- * Restaure l'onglet actif de départ une fois la génération terminée.
+-- * @param {string[]} datesTexte - dates au format "dd/MM/yyyy"
+-- */
+--function genererOngletsSelectionnes(datesTexte) {
+--  const ongletDeDepart = SpreadsheetApp.getActive().getActiveSheet();
+--
+--  const toutesLesDates = obtenirDatesDisponibles();
+--  const datesValides = toutesLesDates.filter(d => datesTexte.includes(formatDateCle(d)));
+--  genererPlannings(datesValides);
+--
+--  SpreadsheetApp.getActive().setActiveSheet(ongletDeDepart);
+--}
+-Index: ../SelectionDates.html
+-===================================================================
+-diff --git a/../SelectionDates.html b/../SelectionDates.html
+-deleted file mode 100644
+---- a/../SelectionDates.html	(revision 331a1c97466b66d0bb7891cba48802216e6d8e0c)
+-+++ /dev/null	(revision 331a1c97466b66d0bb7891cba48802216e6d8e0c)
+-@@ -1,37 +0,0 @@
+--<!DOCTYPE html>
+--<html>
+--  <head>
+--    <base target="_top">
+--    <style>
+--      body { font-family: Arial, sans-serif; font-size: 13px; padding: 8px; }
+--      label { display: block; margin-bottom: 6px; }
+--      button { margin-top: 12px; }
+--    </style>
+--  </head>
+--  <body>
+--    <div id="liste">Chargement des dates…</div>
+--    <button onclick="valider()">Générer</button>
+--
+--    <script>
+--      google.script.run.withSuccessHandler(afficherDates).getDatesPourAffichage();
+--
+--      function afficherDates(dates) {
+--        const conteneur = document.getElementById("liste");
+--        if (!dates.length) {
+--          conteneur.innerHTML = "Aucune date trouvée dans l'onglet Paramètres.";
+--          return;
+--        }
+--        conteneur.innerHTML = dates.map(d =>
+--          `<label><input type="checkbox" value="${d}"> ${d}</label>`
+--        ).join("");
+--      }
+--
+--      function valider() {
+--        const cases = document.querySelectorAll("input[type=checkbox]:checked");
+--        const datesChoisies = Array.from(cases).map(c => c.value);
+--        google.script.run.withSuccessHandler(() => google.script.host.close())
+--          .genererOngletsSelectionnes(datesChoisies);
+--      }
+--    </script>
+--  </body>
+--</html>
+-Index: ../Global.gs
+-===================================================================
+-diff --git a/../Global.gs b/../Global.gs
+-deleted file mode 100644
+---- a/../Global.gs	(revision 331a1c97466b66d0bb7891cba48802216e6d8e0c)
+-+++ /dev/null	(revision 331a1c97466b66d0bb7891cba48802216e6d8e0c)
+-@@ -1,40 +0,0 @@
+--/**
+-- * Global.gs — Constantes globales du projet.
+-- * Aucune logique ici, uniquement des valeurs de configuration.
+-- */
+--
+--const Global = {
+--
+--  // Table de correspondance trajet → délai (en ms). Sert aussi de liste blanche :
+--  // une valeur de ModeArrivée/ModeDépart n'est "confirmée" que si elle est une clé de cet objet.
+--  DELAIS_TRAJET: {
+--    "Corum>SDF":     1 * 60 * 60 * 1000, // 1h
+--    "Corum>St Roch": 1 * 60 * 60 * 1000, // 1h
+--    "Corum>MPL":     2 * 60 * 60 * 1000, // 2h
+--    "Corum>MRS":     4 * 60 * 60 * 1000  // 4h
+--  },
+--
+--  ONGLET_PARAMETRES: "Paramètres",
+--  ONGLET_ARRIVEES: "ARRIVEES",
+--
+--  // Colonne (index 1-based) de l'onglet Paramètres contenant les dates disponibles (colonne D)
+--  PARAMETRES_COLONNE_DATES: 4,
+--
+--  // Noms des colonnes de la liste maîtresse ARRIVEES
+--  COLONNES_MASTER: {
+--    NOM:           "Nom",
+--    PRENOM:        "Prénom",
+--    TELEPHONE:     "Téléphone",
+--    DATE_ARRIVEE:  "DateArrivée",
+--    HEURE_ARRIVEE: "HeureArrivée",
+--    MODE_ARRIVEE:  "ModeArrivée",
+--    DATE_DEPART:   "DateDépart",
+--    HEURE_DEPART:  "HeureDépart",
+--    MODE_DEPART:   "ModeDépart"
+--  },
+--
+--  // En-têtes du planning journalier généré, dans l'ordre exact demandé
+--  ENTETES_PLANNING_JOUR: ["Chauffeur", "Nom", "Prénom", "Heure de pick up", "Arrivée ou départ", "Trajet", "Téléphone"],
+--
+--  JOURS_FR: ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"]
+--};
+Index: .idea/workspace.xml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+><?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<project version=\"4\">\r\n  <component name=\"AutoImportSettings\">\r\n    <option name=\"autoReloadType\" value=\"SELECTIVE\" />\r\n  </component>\r\n  <component name=\"CMakeProjectFlavorService\">\r\n    <option name=\"flavorId\" value=\"CMakePlainProjectFlavor\" />\r\n  </component>\r\n  <component name=\"CMakeSettings\">\r\n    <configurations />\r\n  </component>\r\n  <component name=\"ChangeListManager\">\r\n    <list default=\"true\" id=\"f758e184-c394-42d4-ae6f-a2cc21785e10\" name=\"Changes\" comment=\"\">\r\n      <change beforePath=\"$PROJECT_DIR$/.idea/workspace.xml\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/.idea/workspace.xml\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/Code/.idea/projectSettingsUpdater.xml\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/Code/.idea/workspace.xml\" beforeDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/Code/Common.js\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/Code/Common.js\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/Code/Global.js\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/Code/Global.js\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/Code/Main.js\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/Code/Main.js\" afterDir=\"false\" />\r\n      <change beforePath=\"$PROJECT_DIR$/Code/SelectionDates.html\" beforeDir=\"false\" afterPath=\"$PROJECT_DIR$/Code/SelectionDates.html\" afterDir=\"false\" />\r\n    </list>\r\n    <option name=\"SHOW_DIALOG\" value=\"false\" />\r\n    <option name=\"HIGHLIGHT_CONFLICTS\" value=\"true\" />\r\n    <option name=\"HIGHLIGHT_NON_ACTIVE_CHANGELIST\" value=\"false\" />\r\n    <option name=\"LAST_RESOLUTION\" value=\"IGNORE\" />\r\n  </component>\r\n  <component name=\"Git.Settings\">\r\n    <option name=\"RECENT_BRANCH_BY_REPOSITORY\">\r\n      <map>\r\n        <entry key=\"$PROJECT_DIR$/..\" value=\"main\" />\r\n      </map>\r\n    </option>\r\n    <option name=\"RECENT_GIT_ROOT_PATH\" value=\"$PROJECT_DIR$/..\" />\r\n  </component>\r\n  <component name=\"GitHubPullRequestSearchHistory\">{\r\n  &quot;lastFilter&quot;: {\r\n    &quot;state&quot;: &quot;OPEN&quot;,\r\n    &quot;assignee&quot;: &quot;Azazelle-dev&quot;\r\n  }\r\n}</component>\r\n  <component name=\"GithubPullRequestsUISettings\">{\r\n  &quot;selectedUrlAndAccountId&quot;: {\r\n    &quot;url&quot;: &quot;https://github.com/Azazelle-dev/Cinemed.git&quot;,\r\n    &quot;accountId&quot;: &quot;3ef18d61-647a-4780-a489-080ed2a932ba&quot;\r\n  }\r\n}</component>\r\n  <component name=\"McpProjectServerCommands\">\r\n    <commands />\r\n    <urls />\r\n  </component>\r\n  <component name=\"MetaFilesCheckinStateConfiguration\" checkMetaFiles=\"true\" />\r\n  <component name=\"NextEditCompletionFeaturesState\">\r\n    <decayedCancelled>\r\n      <entry key=\"MS100\" value=\"1.0181989622927776\" />\r\n      <entry key=\"MS500\" value=\"1.45406161238265\" />\r\n      <entry key=\"S2\" value=\"2.0883697649236495\" />\r\n      <entry key=\"S5\" value=\"2.5152180714125\" />\r\n      <entry key=\"S10\" value=\"2.7340588767526075\" />\r\n      <entry key=\"S30\" value=\"3.603831201909557\" />\r\n      <entry key=\"S60\" value=\"5.798329178789738\" />\r\n      <entry key=\"M2\" value=\"10.461723324728727\" />\r\n      <entry key=\"M5\" value=\"20.595773161287934\" />\r\n      <entry key=\"M10\" value=\"27.829616500450385\" />\r\n      <entry key=\"M15\" value=\"31.108670096650666\" />\r\n      <entry key=\"M30\" value=\"39.63539868840074\" />\r\n      <entry key=\"H1\" value=\"81.7110498549167\" />\r\n      <entry key=\"H2\" value=\"187.4390046032356\" />\r\n      <entry key=\"H4\" value=\"319.9165402537509\" />\r\n      <entry key=\"D1\" value=\"524.0387392860472\" />\r\n      <entry key=\"W1\" value=\"572.4499231698452\" />\r\n    </decayedCancelled>\r\n    <decayedSelected>\r\n      <entry key=\"MS100\" value=\"0.0\" />\r\n      <entry key=\"MS500\" value=\"0.0\" />\r\n      <entry key=\"S2\" value=\"0.0\" />\r\n      <entry key=\"S5\" value=\"0.0\" />\r\n      <entry key=\"S10\" value=\"5.092394480952064E-297\" />\r\n      <entry key=\"S30\" value=\"1.7204445489820433E-99\" />\r\n      <entry key=\"S60\" value=\"4.1478241874289163E-50\" />\r\n      <entry key=\"M2\" value=\"2.0366207765386568E-25\" />\r\n      <entry key=\"M5\" value=\"1.3291196169541738E-10\" />\r\n      <entry key=\"M10\" value=\"1.1528745018232355E-5\" />\r\n      <entry key=\"M15\" value=\"5.10334218574831E-4\" />\r\n      <entry key=\"M30\" value=\"0.022590578092975603\" />\r\n      <entry key=\"H1\" value=\"0.15030162372035627\" />\r\n      <entry key=\"H2\" value=\"0.3876875336148374\" />\r\n      <entry key=\"H4\" value=\"0.6226455923033887\" />\r\n      <entry key=\"D1\" value=\"0.9240741461625442\" />\r\n      <entry key=\"W1\" value=\"0.9887829617322276\" />\r\n    </decayedSelected>\r\n    <decayedShown>\r\n      <entry key=\"MS100\" value=\"0.9659365673472436\" />\r\n      <entry key=\"MS500\" value=\"1.0456632273010016\" />\r\n      <entry key=\"S2\" value=\"1.7333793177943886\" />\r\n      <entry key=\"S5\" value=\"2.3275131348059293\" />\r\n      <entry key=\"S10\" value=\"2.6308006124398853\" />\r\n      <entry key=\"S30\" value=\"3.5669564852339093\" />\r\n      <entry key=\"S60\" value=\"5.779263234250847\" />\r\n      <entry key=\"M2\" value=\"10.451415534570636\" />\r\n      <entry key=\"M5\" value=\"20.59074482868726\" />\r\n      <entry key=\"M10\" value=\"27.82675422544338\" />\r\n      <entry key=\"M15\" value=\"31.10715399239229\" />\r\n      <entry key=\"M30\" value=\"39.65687566161456\" />\r\n      <entry key=\"H1\" value=\"81.8606329786309\" />\r\n      <entry key=\"H2\" value=\"187.82614536261164\" />\r\n      <entry key=\"H4\" value=\"320.53879778065317\" />\r\n      <entry key=\"D1\" value=\"524.96271969764\" />\r\n      <entry key=\"W1\" value=\"573.4386917627196\" />\r\n    </decayedShown>\r\n  </component>\r\n  <component name=\"ProblemsViewState\">\r\n    <option name=\"selectedTabId\" value=\"CurrentFile\" />\r\n  </component>\r\n  <component name=\"ProjectColorInfo\">{\r\n  &quot;associatedIndex&quot;: 1,\r\n  &quot;fromUser&quot;: false\r\n}</component>\r\n  <component name=\"ProjectId\" id=\"3J8mM13wexhD01rfoi1fsGNkSVo\" />\r\n  <component name=\"ProjectViewState\">\r\n    <option name=\"hideEmptyMiddlePackages\" value=\"true\" />\r\n    <option name=\"showLibraryContents\" value=\"true\" />\r\n  </component>\r\n  <component name=\"PropertiesComponent\"><![CDATA[{\r\n  \"keyToString\": {\r\n    \"ModuleVcsDetector.initialDetectionPerformed\": \"true\",\r\n    \"RunOnceActivity.MCP Project settings loaded\": \"true\",\r\n    \"RunOnceActivity.ShowReadmeOnStart\": \"true\",\r\n    \"RunOnceActivity.cidr.known.project.marker\": \"true\",\r\n    \"RunOnceActivity.git.unshallow\": \"true\",\r\n    \"RunOnceActivity.readMode.enableVisualFormatting\": \"true\",\r\n    \"RunOnceActivity.typescript.service.memoryLimit.init\": \"true\",\r\n    \"cidr.known.project.marker\": \"true\",\r\n    \"codeWithMe.voiceChat.enabledByDefault\": \"false\",\r\n    \"git-widget-placeholder\": \"Mise-en-place\",\r\n    \"node.js.detected.package.eslint\": \"true\",\r\n    \"node.js.detected.package.tslint\": \"true\",\r\n    \"node.js.selected.package.eslint\": \"(autodetect)\",\r\n    \"node.js.selected.package.tslint\": \"(autodetect)\",\r\n    \"nodejs_package_manager_path\": \"npm\",\r\n    \"settings.editor.selected.configurable\": \"preferences.lookFeel\"\r\n  }\r\n}]]></component>\r\n  <component name=\"TaskManager\">\r\n    <task active=\"true\" id=\"Default\" summary=\"Default task\">\r\n      <changelist id=\"f758e184-c394-42d4-ae6f-a2cc21785e10\" name=\"Changes\" comment=\"\" />\r\n      <created>1789051017722</created>\r\n      <option name=\"number\" value=\"Default\" />\r\n      <option name=\"presentableId\" value=\"Default\" />\r\n      <updated>1789051017722</updated>\r\n    </task>\r\n    <servers />\r\n  </component>\r\n  <component name=\"TypeScriptGeneratedFilesManager\">\r\n    <option name=\"version\" value=\"3\" />\r\n  </component>\r\n  <component name=\"UnityCheckinConfiguration\" checkUnsavedScenes=\"true\" />\r\n  <component name=\"UnityProjectConfiguration\" hasMinimizedUI=\"false\" />\r\n  <component name=\"Vcs.Log.Tabs.Properties\">\r\n    <option name=\"TAB_STATES\">\r\n      <map>\r\n        <entry key=\"MAIN\">\r\n          <value>\r\n            <State>\r\n              <option name=\"FILTERS\">\r\n                <map>\r\n                  <entry key=\"branch\">\r\n                    <value>\r\n                      <list>\r\n                        <option value=\"origin/Mise-en-place\" />\r\n                      </list>\r\n                    </value>\r\n                  </entry>\r\n                </map>\r\n              </option>\r\n            </State>\r\n          </value>\r\n        </entry>\r\n      </map>\r\n    </option>\r\n  </component>\r\n  <component name=\"VcsManagerConfiguration\">\r\n    <option name=\"CLEAR_INITIAL_COMMIT_MESSAGE\" value=\"true\" />\r\n    <MESSAGE value=\"génération des planning ajouter\" />\r\n    <MESSAGE value=\"changement de place du html\" />\r\n    <MESSAGE value=\"Mise a jour du Global\" />\r\n    <MESSAGE value=\"workspace xlm\" />\r\n    <option name=\"LAST_COMMIT_MESSAGE\" value=\"workspace xlm\" />\r\n  </component>\r\n  <component name=\"XDebuggerManager\">\r\n    <breakpoint-manager>\r\n      <breakpoints>\r\n        <breakpoint enabled=\"true\" type=\"DotNet_Exception_Breakpoints\">\r\n          <properties exception=\"System.OperationCanceledException\" breakIfHandledByOtherCode=\"false\" displayValue=\"System.OperationCanceledException\" />\r\n          <option name=\"timeStamp\" value=\"1\" />\r\n        </breakpoint>\r\n        <breakpoint enabled=\"true\" type=\"DotNet_Exception_Breakpoints\">\r\n          <properties exception=\"System.Threading.Tasks.TaskCanceledException\" breakIfHandledByOtherCode=\"false\" displayValue=\"System.Threading.Tasks.TaskCanceledException\" />\r\n          <option name=\"timeStamp\" value=\"2\" />\r\n        </breakpoint>\r\n        <breakpoint enabled=\"true\" type=\"DotNet_Exception_Breakpoints\">\r\n          <properties exception=\"System.Threading.ThreadAbortException\" breakIfHandledByOtherCode=\"false\" displayValue=\"System.Threading.ThreadAbortException\" />\r\n          <option name=\"timeStamp\" value=\"3\" />\r\n        </breakpoint>\r\n      </breakpoints>\r\n    </breakpoint-manager>\r\n  </component>\r\n  <component name=\"XSLT-Support.FileAssociations.UIState\">\r\n    <expand />\r\n    <select />\r\n  </component>\r\n</project>
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/.idea/workspace.xml b/.idea/workspace.xml
+--- a/.idea/workspace.xml	(revision a331dbd0c2abf7166516e02514918b758ea29ccd)
++++ b/.idea/workspace.xml	(date 1790158935540)
+@@ -11,13 +11,12 @@
+   </component>
+   <component name="ChangeListManager">
+     <list default="true" id="f758e184-c394-42d4-ae6f-a2cc21785e10" name="Changes" comment="">
++      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch" beforeDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14__Changes_.xml" beforeDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch" beforeDir="false" />
++      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09__Changes_.xml" beforeDir="false" />
+       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/Code/.idea/projectSettingsUpdater.xml" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/Code/.idea/workspace.xml" beforeDir="false" />
+-      <change beforePath="$PROJECT_DIR$/Code/Common.js" beforeDir="false" afterPath="$PROJECT_DIR$/Code/Common.js" afterDir="false" />
+       <change beforePath="$PROJECT_DIR$/Code/Global.js" beforeDir="false" afterPath="$PROJECT_DIR$/Code/Global.js" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/Code/Main.js" beforeDir="false" afterPath="$PROJECT_DIR$/Code/Main.js" afterDir="false" />
+-      <change beforePath="$PROJECT_DIR$/Code/SelectionDates.html" beforeDir="false" afterPath="$PROJECT_DIR$/Code/SelectionDates.html" afterDir="false" />
+     </list>
+     <option name="SHOW_DIALOG" value="false" />
+     <option name="HIGHLIGHT_CONFLICTS" value="true" />
+@@ -51,61 +50,61 @@
+   <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
+   <component name="NextEditCompletionFeaturesState">
+     <decayedCancelled>
+-      <entry key="MS100" value="1.0181989622927776" />
+-      <entry key="MS500" value="1.45406161238265" />
+-      <entry key="S2" value="2.0883697649236495" />
+-      <entry key="S5" value="2.5152180714125" />
+-      <entry key="S10" value="2.7340588767526075" />
+-      <entry key="S30" value="3.603831201909557" />
+-      <entry key="S60" value="5.798329178789738" />
+-      <entry key="M2" value="10.461723324728727" />
+-      <entry key="M5" value="20.595773161287934" />
+-      <entry key="M10" value="27.829616500450385" />
+-      <entry key="M15" value="31.108670096650666" />
+-      <entry key="M30" value="39.63539868840074" />
+-      <entry key="H1" value="81.7110498549167" />
+-      <entry key="H2" value="187.4390046032356" />
+-      <entry key="H4" value="319.9165402537509" />
+-      <entry key="D1" value="524.0387392860472" />
+-      <entry key="W1" value="572.4499231698452" />
++      <entry key="MS100" value="1.0" />
++      <entry key="MS500" value="1.0" />
++      <entry key="S2" value="1.0000065968859675" />
++      <entry key="S5" value="1.012833287982674" />
++      <entry key="S10" value="1.1602069526641245" />
++      <entry key="S30" value="1.8621456858708243" />
++      <entry key="S60" value="2.315123302669635" />
++      <entry key="M2" value="2.7041192598011605" />
++      <entry key="M5" value="4.108440974415084" />
++      <entry key="M10" value="7.1029496782923705" />
++      <entry key="M15" value="10.403498348792779" />
++      <entry key="M30" value="22.253285159193258" />
++      <entry key="H1" value="47.895661151761914" />
++      <entry key="H2" value="116.85559071721497" />
++      <entry key="H4" value="249.85127537409167" />
++      <entry key="D1" value="555.2342151062657" />
++      <entry key="W1" value="644.5721348394956" />
+     </decayedCancelled>
+     <decayedSelected>
+       <entry key="MS100" value="0.0" />
+       <entry key="MS500" value="0.0" />
+       <entry key="S2" value="0.0" />
+       <entry key="S5" value="0.0" />
+-      <entry key="S10" value="5.092394480952064E-297" />
+-      <entry key="S30" value="1.7204445489820433E-99" />
+-      <entry key="S60" value="4.1478241874289163E-50" />
+-      <entry key="M2" value="2.0366207765386568E-25" />
+-      <entry key="M5" value="1.3291196169541738E-10" />
+-      <entry key="M10" value="1.1528745018232355E-5" />
+-      <entry key="M15" value="5.10334218574831E-4" />
+-      <entry key="M30" value="0.022590578092975603" />
+-      <entry key="H1" value="0.15030162372035627" />
+-      <entry key="H2" value="0.3876875336148374" />
+-      <entry key="H4" value="0.6226455923033887" />
+-      <entry key="D1" value="0.9240741461625442" />
+-      <entry key="W1" value="0.9887829617322276" />
++      <entry key="S10" value="0.0" />
++      <entry key="S30" value="4.0696566092305214E-215" />
++      <entry key="S60" value="6.37938602784821E-108" />
++      <entry key="M2" value="2.525744648187581E-54" />
++      <entry key="M5" value="3.6387798119976327E-22" />
++      <entry key="M10" value="1.907558599885632E-11" />
++      <entry key="M15" value="7.139239073392966E-8" />
++      <entry key="M30" value="2.671935454570885E-4" />
++      <entry key="H1" value="0.01634605596029476" />
++      <entry key="H2" value="0.12785169517958958" />
++      <entry key="H4" value="0.35756355404262014" />
++      <entry key="D1" value="0.8424785925479976" />
++      <entry key="W1" value="0.9758106494773133" />
+     </decayedSelected>
+     <decayedShown>
+-      <entry key="MS100" value="0.9659365673472436" />
+-      <entry key="MS500" value="1.0456632273010016" />
+-      <entry key="S2" value="1.7333793177943886" />
+-      <entry key="S5" value="2.3275131348059293" />
+-      <entry key="S10" value="2.6308006124398853" />
+-      <entry key="S30" value="3.5669564852339093" />
+-      <entry key="S60" value="5.779263234250847" />
+-      <entry key="M2" value="10.451415534570636" />
+-      <entry key="M5" value="20.59074482868726" />
+-      <entry key="M10" value="27.82675422544338" />
+-      <entry key="M15" value="31.10715399239229" />
+-      <entry key="M30" value="39.65687566161456" />
+-      <entry key="H1" value="81.8606329786309" />
+-      <entry key="H2" value="187.82614536261164" />
+-      <entry key="H4" value="320.53879778065317" />
+-      <entry key="D1" value="524.96271969764" />
+-      <entry key="W1" value="573.4386917627196" />
++      <entry key="MS100" value="0.9075191553171609" />
++      <entry key="MS500" value="0.9807790039885513" />
++      <entry key="S2" value="0.9951662856181562" />
++      <entry key="S5" value="1.010868581285923" />
++      <entry key="S10" value="1.159076060918757" />
++      <entry key="S30" value="1.8615334694608892" />
++      <entry key="S60" value="2.314741336814033" />
++      <entry key="M2" value="2.7038936645103626" />
++      <entry key="M5" value="4.108149976742733" />
++      <entry key="M10" value="7.102421537977628" />
++      <entry key="M15" value="10.402901241739858" />
++      <entry key="M30" value="22.2529836629274" />
++      <entry key="H1" value="47.91152315626209" />
++      <entry key="H2" value="116.98301020786265" />
++      <entry key="H4" value="250.20847466770297" />
++      <entry key="D1" value="556.0765821738283" />
++      <entry key="W1" value="645.547927518321" />
+     </decayedShown>
+   </component>
+   <component name="ProblemsViewState">
+@@ -120,26 +119,26 @@
+     <option name="hideEmptyMiddlePackages" value="true" />
+     <option name="showLibraryContents" value="true" />
+   </component>
+-  <component name="PropertiesComponent"><![CDATA[{
+-  "keyToString": {
+-    "ModuleVcsDetector.initialDetectionPerformed": "true",
+-    "RunOnceActivity.MCP Project settings loaded": "true",
+-    "RunOnceActivity.ShowReadmeOnStart": "true",
+-    "RunOnceActivity.cidr.known.project.marker": "true",
+-    "RunOnceActivity.git.unshallow": "true",
+-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+-    "cidr.known.project.marker": "true",
+-    "codeWithMe.voiceChat.enabledByDefault": "false",
+-    "git-widget-placeholder": "Mise-en-place",
+-    "node.js.detected.package.eslint": "true",
+-    "node.js.detected.package.tslint": "true",
+-    "node.js.selected.package.eslint": "(autodetect)",
+-    "node.js.selected.package.tslint": "(autodetect)",
+-    "nodejs_package_manager_path": "npm",
+-    "settings.editor.selected.configurable": "preferences.lookFeel"
++  <component name="PropertiesComponent">{
++  &quot;keyToString&quot;: {
++    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
++    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
++    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
++    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
++    &quot;git-widget-placeholder&quot;: &quot;Mise-en-place&quot;,
++    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
++    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
++    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
++    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
++    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
++    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;
+   }
+-}]]></component>
++}</component>
+   <component name="TaskManager">
+     <task active="true" id="Default" summary="Default task">
+       <changelist id="f758e184-c394-42d4-ae6f-a2cc21785e10" name="Changes" comment="" />
+@@ -184,7 +183,8 @@
+     <MESSAGE value="changement de place du html" />
+     <MESSAGE value="Mise a jour du Global" />
+     <MESSAGE value="workspace xlm" />
+-    <option name="LAST_COMMIT_MESSAGE" value="workspace xlm" />
++    <MESSAGE value="Mise en page" />
++    <option name="LAST_COMMIT_MESSAGE" value="Mise en page" />
+   </component>
+   <component name="XDebuggerManager">
+     <breakpoint-manager>

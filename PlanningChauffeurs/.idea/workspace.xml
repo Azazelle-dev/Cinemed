@@ -11,13 +11,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="f758e184-c394-42d4-ae6f-a2cc21785e10" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Checkout_at_14_09_2026_17_14__Changes_.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_14_09_2026_17_09__Changes_.xml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Code/.idea/projectSettingsUpdater.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Code/.idea/workspace.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Code/Common.js" beforeDir="false" afterPath="$PROJECT_DIR$/Code/Common.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/Code/Global.js" beforeDir="false" afterPath="$PROJECT_DIR$/Code/Global.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Code/Main.js" beforeDir="false" afterPath="$PROJECT_DIR$/Code/Main.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Code/SelectionDates.html" beforeDir="false" afterPath="$PROJECT_DIR$/Code/SelectionDates.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -51,61 +50,61 @@
   <component name="MetaFilesCheckinStateConfiguration" checkMetaFiles="true" />
   <component name="NextEditCompletionFeaturesState">
     <decayedCancelled>
-      <entry key="MS100" value="1.0181989622927776" />
-      <entry key="MS500" value="1.45406161238265" />
-      <entry key="S2" value="2.0883697649236495" />
-      <entry key="S5" value="2.5152180714125" />
-      <entry key="S10" value="2.7340588767526075" />
-      <entry key="S30" value="3.603831201909557" />
-      <entry key="S60" value="5.798329178789738" />
-      <entry key="M2" value="10.461723324728727" />
-      <entry key="M5" value="20.595773161287934" />
-      <entry key="M10" value="27.829616500450385" />
-      <entry key="M15" value="31.108670096650666" />
-      <entry key="M30" value="39.63539868840074" />
-      <entry key="H1" value="81.7110498549167" />
-      <entry key="H2" value="187.4390046032356" />
-      <entry key="H4" value="319.9165402537509" />
-      <entry key="D1" value="524.0387392860472" />
-      <entry key="W1" value="572.4499231698452" />
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0" />
+      <entry key="S2" value="1.0000065968859675" />
+      <entry key="S5" value="1.012833287982674" />
+      <entry key="S10" value="1.1602069526641245" />
+      <entry key="S30" value="1.8621456858708243" />
+      <entry key="S60" value="2.315123302669635" />
+      <entry key="M2" value="2.7041192598011605" />
+      <entry key="M5" value="4.108440974415084" />
+      <entry key="M10" value="7.1029496782923705" />
+      <entry key="M15" value="10.403498348792779" />
+      <entry key="M30" value="22.253285159193258" />
+      <entry key="H1" value="47.895661151761914" />
+      <entry key="H2" value="116.85559071721497" />
+      <entry key="H4" value="249.85127537409167" />
+      <entry key="D1" value="555.2342151062657" />
+      <entry key="W1" value="644.5721348394956" />
     </decayedCancelled>
     <decayedSelected>
       <entry key="MS100" value="0.0" />
       <entry key="MS500" value="0.0" />
       <entry key="S2" value="0.0" />
       <entry key="S5" value="0.0" />
-      <entry key="S10" value="5.092394480952064E-297" />
-      <entry key="S30" value="1.7204445489820433E-99" />
-      <entry key="S60" value="4.1478241874289163E-50" />
-      <entry key="M2" value="2.0366207765386568E-25" />
-      <entry key="M5" value="1.3291196169541738E-10" />
-      <entry key="M10" value="1.1528745018232355E-5" />
-      <entry key="M15" value="5.10334218574831E-4" />
-      <entry key="M30" value="0.022590578092975603" />
-      <entry key="H1" value="0.15030162372035627" />
-      <entry key="H2" value="0.3876875336148374" />
-      <entry key="H4" value="0.6226455923033887" />
-      <entry key="D1" value="0.9240741461625442" />
-      <entry key="W1" value="0.9887829617322276" />
+      <entry key="S10" value="0.0" />
+      <entry key="S30" value="4.0696566092305214E-215" />
+      <entry key="S60" value="6.37938602784821E-108" />
+      <entry key="M2" value="2.525744648187581E-54" />
+      <entry key="M5" value="3.6387798119976327E-22" />
+      <entry key="M10" value="1.907558599885632E-11" />
+      <entry key="M15" value="7.139239073392966E-8" />
+      <entry key="M30" value="2.671935454570885E-4" />
+      <entry key="H1" value="0.01634605596029476" />
+      <entry key="H2" value="0.12785169517958958" />
+      <entry key="H4" value="0.35756355404262014" />
+      <entry key="D1" value="0.8424785925479976" />
+      <entry key="W1" value="0.9758106494773133" />
     </decayedSelected>
     <decayedShown>
-      <entry key="MS100" value="0.9659365673472436" />
-      <entry key="MS500" value="1.0456632273010016" />
-      <entry key="S2" value="1.7333793177943886" />
-      <entry key="S5" value="2.3275131348059293" />
-      <entry key="S10" value="2.6308006124398853" />
-      <entry key="S30" value="3.5669564852339093" />
-      <entry key="S60" value="5.779263234250847" />
-      <entry key="M2" value="10.451415534570636" />
-      <entry key="M5" value="20.59074482868726" />
-      <entry key="M10" value="27.82675422544338" />
-      <entry key="M15" value="31.10715399239229" />
-      <entry key="M30" value="39.65687566161456" />
-      <entry key="H1" value="81.8606329786309" />
-      <entry key="H2" value="187.82614536261164" />
-      <entry key="H4" value="320.53879778065317" />
-      <entry key="D1" value="524.96271969764" />
-      <entry key="W1" value="573.4386917627196" />
+      <entry key="MS100" value="0.9075191553171609" />
+      <entry key="MS500" value="0.9807790039885513" />
+      <entry key="S2" value="0.9951662856181562" />
+      <entry key="S5" value="1.010868581285923" />
+      <entry key="S10" value="1.159076060918757" />
+      <entry key="S30" value="1.8615334694608892" />
+      <entry key="S60" value="2.314741336814033" />
+      <entry key="M2" value="2.7038936645103626" />
+      <entry key="M5" value="4.108149976742733" />
+      <entry key="M10" value="7.102421537977628" />
+      <entry key="M15" value="10.402901241739858" />
+      <entry key="M30" value="22.2529836629274" />
+      <entry key="H1" value="47.91152315626209" />
+      <entry key="H2" value="116.98301020786265" />
+      <entry key="H4" value="250.20847466770297" />
+      <entry key="D1" value="556.0765821738283" />
+      <entry key="W1" value="645.547927518321" />
     </decayedShown>
   </component>
   <component name="ProblemsViewState">
@@ -120,26 +119,26 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "cidr.known.project.marker": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "git-widget-placeholder": "Mise-en-place",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.lookFeel"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;Mise-en-place&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;
   }
-}]]></component>
+}</component>
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
       <changelist id="f758e184-c394-42d4-ae6f-a2cc21785e10" name="Changes" comment="" />
@@ -184,7 +183,8 @@
     <MESSAGE value="changement de place du html" />
     <MESSAGE value="Mise a jour du Global" />
     <MESSAGE value="workspace xlm" />
-    <option name="LAST_COMMIT_MESSAGE" value="workspace xlm" />
+    <MESSAGE value="Mise en page" />
+    <option name="LAST_COMMIT_MESSAGE" value="Mise en page" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
