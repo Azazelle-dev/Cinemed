@@ -389,6 +389,42 @@ function verifierEnTetesSources() {
 }
 
 /**
+ * Normalise un code couleur hexadécimal : accepte avec ou sans "#", en
+ * majuscules ou minuscules, et renvoie toujours "#rrggbb" en minuscules.
+ * Lève une erreur explicite si le format est invalide, plutôt que de laisser
+ * setBackground()/setFontColor() échouer silencieusement plus loin.
+ * @param {string} couleur
+ * @param {string} [nom] - nom de la constante (ex. "ENTETE_FOND"), pour le message d'erreur
+ * @return {string}
+ */
+function normaliserCouleurHex(couleur, nom) {
+  const valeur = (couleur || "").toString().trim().replace(/^#/, "").toLowerCase();
+
+  if (!/^[0-9a-f]{6}$/.test(valeur)) {
+    throw new Error(
+      "Couleur invalide" + (nom ? " pour Global.COULEURS." + nom : "") + " : \"" + couleur + "\". " +
+      "Attendu un code hexadécimal à 6 chiffres, avec ou sans '#' (ex. \"1c4587\" ou \"#1c4587\")."
+    );
+  }
+
+  return "#" + valeur;
+}
+
+/**
+ * Normalise et valide toutes les couleurs de Global.COULEURS d'un coup. Si
+ * une couleur est mal formée, l'erreur explicite apparaît immédiatement à
+ * l'exécution plutôt que de se manifester plus tard comme un bug muet.
+ * @return {Object<string, string>} mêmes clés que Global.COULEURS, valeurs "#rrggbb"
+ */
+function obtenirCouleursValidees() {
+  const couleurs = {};
+  Object.keys(Global.COULEURS).forEach(cle => {
+    couleurs[cle] = normaliserCouleurHex(Global.COULEURS[cle], cle);
+  });
+  return couleurs;
+}
+
+/**
  * Colore les lignes de nomOnglet par blocs consécutifs partageant la même
  * date, en alternant deux couleurs à chaque changement — pour repérer un jour du
  * suivant d'un coup d'œil. Suppose que les lignes sont déjà groupées par date
@@ -405,7 +441,8 @@ function colorerBlocsParDate(nomOnglet, positionColonneDate) {
 
   const donnees = feuille.getRange(1, 1, derniereLigne, derniereColonne).getValues();
 
-  const couleurs = [Global.COULEURS.SOURCE_BLOC_1, Global.COULEURS.SOURCE_BLOC_2];
+  const couleursValidees = obtenirCouleursValidees();
+  const couleurs = [couleursValidees.SOURCE_BLOC_1, couleursValidees.SOURCE_BLOC_2];
   let indexCouleur = 0;
   let cleDatePrecedente = null;
 
@@ -626,11 +663,13 @@ function formaterOnglet(feuille) {
   const derniereColonne = feuille.getLastColumn();
   if (derniereLigne < 1 || derniereColonne < 1) return;
 
+  const couleurs = obtenirCouleursValidees();
+
   // En-tête : toujours bleu avec texte blanc, quoi qu'il arrive ensuite.
   feuille.getRange(1, 1, 1, derniereColonne)
     .setFontWeight("bold")
-    .setBackground(Global.COULEURS.ENTETE_FOND)
-    .setFontColor(Global.COULEURS.ENTETE_TEXTE)
+    .setBackground(couleurs.ENTETE_FOND)
+    .setFontColor(couleurs.ENTETE_TEXTE)
     .setHorizontalAlignment("center");
 
   feuille.setFrozenRows(1);
@@ -638,7 +677,7 @@ function formaterOnglet(feuille) {
   if (derniereLigne > 1) {
     const donnees = feuille.getRange(2, 1, derniereLigne - 1, derniereColonne);
     donnees.setHorizontalAlignment("center");
-    donnees.setBorder(true, true, true, true, true, true, Global.COULEURS.BORDURE_DONNEES, SpreadsheetApp.BorderStyle.SOLID);
+    donnees.setBorder(true, true, true, true, true, true, couleurs.BORDURE_DONNEES, SpreadsheetApp.BorderStyle.SOLID);
 
     // Retire toute bande automatique existante : elle écraserait l'en-tête
     // bleu/blanc et empêcherait la coloration manuelle par type ci-dessous.
@@ -684,11 +723,13 @@ function colorerLignesParType(feuille) {
   const idxOrigine = enTetes.indexOf(Global.COLONNES_PLANNING.ORIGINE) + 1;
   if (idxOrigine === 0) return;
 
+  const couleurs = obtenirCouleursValidees();
+
   const valeurs = feuille.getRange(2, idxOrigine, derniereLigne - 1, 1).getValues();
 
   valeurs.forEach((ligne, i) => {
     const origine = (ligne[0] || "").toString().trim();
-    const couleur = origine === "Départ" ? Global.COULEURS.LIGNE_DEPART : Global.COULEURS.LIGNE_ARRIVEE;
+    const couleur = origine === "Départ" ? couleurs.LIGNE_DEPART : couleurs.LIGNE_ARRIVEE;
     feuille.getRange(2 + i, 1, 1, derniereColonne).setBackground(couleur);
   });
 }
@@ -839,8 +880,10 @@ function marquerLignesEnErreur(lignesVerifiees, erreurs) {
   const derniereColonne = feuille.getLastColumn();
   if (derniereColonne < 1) return;
 
-  lignesVerifiees.forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor(Global.COULEURS.TEXTE_NORMAL));
-  erreurs.forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor(Global.COULEURS.TEXTE_ERREUR));
+  const couleurs = obtenirCouleursValidees();
+
+  lignesVerifiees.forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor(couleurs.TEXTE_NORMAL));
+  erreurs.forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor(couleurs.TEXTE_ERREUR));
 }
 
 /**
