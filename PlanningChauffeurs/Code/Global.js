@@ -89,7 +89,10 @@ const Global = {
 
   JOURS_FR: ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"],
 
-  // Toutes les couleurs utilisées par le script (plannings générés et sources)
+  // Toutes les couleurs utilisées par le script (plannings générés et sources).
+  // Format hexadécimal UNIQUEMENT ("#rrggbb" ou "#rgb") : pas de rgb(), pas de
+  // nom CSS. Validées par obtenirCouleursValidees() (Common.gs), qui arrête le
+  // script avec un message clair si une valeur est mal saisie.
   COULEURS: {
     ENTETE_FOND: "#1c4587",     // fond de la ligne d'en-tête, toujours bleu
     ENTETE_TEXTE: "#ffffff",    // texte de la ligne d'en-tête, toujours blanc

@@ -168,14 +168,6 @@ function forcerTexteLitteral(texte) {
   return texte ? "'" + texte : texte;
 }
 
-/**
- * Convertit une cellule de durée (ex: 01:00:00, lue comme objet Date par Apps Script)
- * en millisecondes. Utilise les getters UTC volontairement : les cellules de durée
- * pure n'ont pas de fuseau horaire, donc passer par getHours() (heure locale du
- * script) risquerait de réintroduire un décalage.
- * @param {Date|number} valeur
- * @return {number}
- */
 // Référence Sheets (30/12/1899, minuit) construite de la même façon que les
 // valeurs de durée lues depuis la feuille, pour que le décalage historique de
 // fuseau horaire (Paris Mean Time ≈ UTC+0:09:21 avant 1911) s'annule dans la
@@ -184,6 +176,13 @@ function forcerTexteLitteral(texte) {
 // attendue).
 const EPOQUE_SHEETS = new Date(1899, 11, 30, 0, 0, 0, 0);
 
+/**
+ * Convertit une cellule de durée (ex: 01:00:00, lue comme objet Date par Apps Script)
+ * en millisecondes, par différence avec EPOQUE_SHEETS : les deux dates portent
+ * le même décalage historique de fuseau, qui s'annule dans la soustraction.
+ * @param {Date|number} valeur
+ * @return {number}
+ */
 function dureeEnMillisecondes(valeur) {
   if (valeur instanceof Date) {
     return valeur.getTime() - EPOQUE_SHEETS.getTime();
@@ -389,21 +388,27 @@ function verifierEnTetesSources() {
 }
 
 /**
- * Normalise un code couleur hexadécimal : accepte avec ou sans "#", en
- * majuscules ou minuscules, et renvoie toujours "#rrggbb" en minuscules.
- * Lève une erreur explicite si le format est invalide, plutôt que de laisser
- * setBackground()/setFontColor() échouer silencieusement plus loin.
+ * Normalise un code couleur hexadécimal, seul format accepté par le script :
+ * "#rrggbb" ou forme courte "#rgb", avec ou sans "#", en majuscules ou
+ * minuscules. Renvoie toujours "#rrggbb" en minuscules. Tout autre format
+ * (rgb(...), nom CSS comme "red", valeur vide...) lève une erreur explicite,
+ * plutôt que de laisser setBackground()/setFontColor() échouer
+ * silencieusement plus loin.
  * @param {string} couleur
  * @param {string} [nom] - nom de la constante (ex. "ENTETE_FOND"), pour le message d'erreur
  * @return {string}
  */
 function normaliserCouleurHex(couleur, nom) {
-  const valeur = (couleur || "").toString().trim().replace(/^#/, "").toLowerCase();
+  let valeur = (couleur || "").toString().trim().replace(/^#/, "").toLowerCase();
+
+  if (/^[0-9a-f]{3}$/.test(valeur)) {
+    valeur = valeur.split("").map(c => c + c).join(""); // "#abc" -> "#aabbcc"
+  }
 
   if (!/^[0-9a-f]{6}$/.test(valeur)) {
     throw new Error(
       "Couleur invalide" + (nom ? " pour Global.COULEURS." + nom : "") + " : \"" + couleur + "\". " +
-      "Attendu un code hexadécimal à 6 chiffres, avec ou sans '#' (ex. \"1c4587\" ou \"#1c4587\")."
+      "Attendu un code hexadécimal \"#rrggbb\" ou \"#rgb\" (ex. \"#1c4587\") — pas de rgb() ni de nom de couleur."
     );
   }
 
@@ -439,24 +444,33 @@ function colorerBlocsParDate(nomOnglet, positionColonneDate) {
   const derniereColonne = feuille.getLastColumn();
   if (derniereLigne < 2) return;
 
-  const donnees = feuille.getRange(1, 1, derniereLigne, derniereColonne).getValues();
+  const couleurs = obtenirCouleursValidees();
+  const couleursBlocs = [couleurs.SOURCE_BLOC_1, couleurs.SOURCE_BLOC_2];
 
-  const couleursValidees = obtenirCouleursValidees();
-  const couleurs = [couleursValidees.SOURCE_BLOC_1, couleursValidees.SOURCE_BLOC_2];
-  let indexCouleur = 0;
+  const donnees = feuille.getRange(2, 1, derniereLigne - 1, derniereColonne).getValues();
+  const fonds = [];
+  let indexCouleur = 0; // le 1er bloc prend SOURCE_BLOC_1
   let cleDatePrecedente = null;
 
-  for (let i = 1; i < donnees.length; i++) {
-    const valeurDate = donnees[i][positionColonneDate];
+  donnees.forEach(ligne => {
+    const valeurDate = ligne[positionColonneDate];
     const cleDate = (valeurDate instanceof Date) ? formatDateCle(valeurDate) : String(valeurDate);
 
-    if (cleDate !== cleDatePrecedente) {
+    if (cleDatePrecedente !== null && cleDate !== cleDatePrecedente) {
       indexCouleur = 1 - indexCouleur; // bascule à chaque changement de date
-      cleDatePrecedente = cleDate;
     }
+    cleDatePrecedente = cleDate;
 
-    feuille.getRange(i + 1, 1, 1, derniereColonne).setBackground(couleurs[indexCouleur]);
-  }
+    fonds.push(new Array(derniereColonne).fill(couleursBlocs[indexCouleur]));
+  });
+
+  // Une bande automatique (applyRowBanding / "Couleurs en alternance")
+  // l'emporte sur setBackground : on la retire, sinon les blocs ne
+  // s'afficheraient jamais.
+  feuille.getBandings().forEach(bande => bande.remove());
+
+  // Un seul appel pour toute la feuille, au lieu d'un setBackground par ligne.
+  feuille.getRange(2, 1, fonds.length, derniereColonne).setBackgrounds(fonds);
 }
 
 /**
@@ -665,6 +679,12 @@ function formaterOnglet(feuille) {
 
   const couleurs = obtenirCouleursValidees();
 
+  // Retire toute bande automatique existante (héritée de Planning Source) AVANT
+  // de colorer : elle l'emporte sur setBackground et écraserait l'en-tête
+  // bleu/blanc et la coloration par type — y compris sur un onglet qui n'a
+  // encore que sa ligne d'en-tête.
+  feuille.getBandings().forEach(bande => bande.remove());
+
   // En-tête : toujours bleu avec texte blanc, quoi qu'il arrive ensuite.
   feuille.getRange(1, 1, 1, derniereColonne)
     .setFontWeight("bold")
@@ -678,10 +698,6 @@ function formaterOnglet(feuille) {
     const donnees = feuille.getRange(2, 1, derniereLigne - 1, derniereColonne);
     donnees.setHorizontalAlignment("center");
     donnees.setBorder(true, true, true, true, true, true, couleurs.BORDURE_DONNEES, SpreadsheetApp.BorderStyle.SOLID);
-
-    // Retire toute bande automatique existante : elle écraserait l'en-tête
-    // bleu/blanc et empêcherait la coloration manuelle par type ci-dessous.
-    feuille.getBandings().forEach(bande => bande.remove());
 
     colorerLignesParType(feuille);
   }
@@ -727,11 +743,14 @@ function colorerLignesParType(feuille) {
 
   const valeurs = feuille.getRange(2, idxOrigine, derniereLigne - 1, 1).getValues();
 
-  valeurs.forEach((ligne, i) => {
+  const fonds = valeurs.map(ligne => {
     const origine = (ligne[0] || "").toString().trim();
     const couleur = origine === "Départ" ? couleurs.LIGNE_DEPART : couleurs.LIGNE_ARRIVEE;
-    feuille.getRange(2 + i, 1, 1, derniereColonne).setBackground(couleur);
+    return new Array(derniereColonne).fill(couleur);
   });
+
+  // Un seul appel pour tout l'onglet, au lieu d'un setBackground par ligne.
+  feuille.getRange(2, 1, fonds.length, derniereColonne).setBackgrounds(fonds);
 }
 
 /**
@@ -886,8 +905,14 @@ function marquerLignesEnErreur(lignesVerifiees, erreurs) {
 
   const couleurs = obtenirCouleursValidees();
 
-  lignesVerifiees.forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor(couleurs.TEXTE_NORMAL));
-  erreurs.forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor(couleurs.TEXTE_ERREUR));
+  // Une même ligne peut être listée deux fois (côté arrivée ET côté départ) :
+  // on dédoublonne, et une ligne en erreur d'un côté reste rouge même si
+  // l'autre côté est correct.
+  const lignesEnErreur = new Set(erreurs.map(e => e.ligne));
+  const lignesOk = new Set(lignesVerifiees.map(l => l.ligne).filter(n => !lignesEnErreur.has(n)));
+
+  lignesOk.forEach(n => feuille.getRange(n, 1, 1, derniereColonne).setFontColor(couleurs.TEXTE_NORMAL));
+  lignesEnErreur.forEach(n => feuille.getRange(n, 1, 1, derniereColonne).setFontColor(couleurs.TEXTE_ERREUR));
 }
 
 /**
