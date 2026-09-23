@@ -431,200 +431,161 @@ function colorerBlocsDeDatesDesSources() {
 }
 
 /**
- * Parcourt ARRIVEES et retourne toute personne dont DateArrivée tombe dans
- * datesAutorisees — même si ModeArrivée est encore vide ou non reconnu.
- * heurePickup ET lieuPickup (copie brute de ModeArrivée : abréviation +
- * numéro de vol/train tel que saisi) restent tous les deux vides tant que
- * l'abréviation n'est pas reconnue dans Paramètres — une abréviation non
- * reconnue est une erreur (voir erreurs plus bas), elle ne doit pas être
- * recopiée. Une personne dont le lieu détecté est Saint-Roch ("SR"), ou dont
- * le mode est un code "moyen propre" (PPM), est retirée du résultat si la
- * règle d'exclusion s'applique (cf. estExcluArrivee) — évaluable seulement
- * si l'heure est connue, sinon la personne reste visible.
+ * Parcourt ARRIVEES une seule fois et retourne, pour chaque ligne, jusqu'à
+ * deux mouvements distincts : un pour l'arrivée (colonnes DateArrivée/
+ * HeureArrivée/ModeArrivée) si DateArrivée tombe dans datesAutorisees, un
+ * pour le départ (colonnes DateDépart/HeureDépart/ModeDépart) si DateDépart
+ * y tombe — une ligne peut donc produire 0, 1 ou 2 mouvements. Fusionner en
+ * une seule fonction (plutôt que deux fonctions relisant chacune toute la
+ * feuille) évite toute ambiguïté sur l'origine réelle de chaque mouvement
+ * (source d'un bug où "Arrivée/Départ" affichait toujours "Arrivée").
+ *
+ * Mêmes règles des deux côtés : un mode vide ou non reconnu laisse la
+ * personne visible (heurePickup/lieuPickup ou lieuDepose restent vides) ; un
+ * mode renseigné mais non reconnu est signalé comme erreur ; la règle
+ * Saint-Roch/PPM ne s'évalue que si l'heure est connue ; lieuPickup/
+ * lieuDepose (copie brute du mode saisi) ne sont remplis que si
+ * l'abréviation est reconnue — une abréviation non reconnue est une erreur,
+ * elle ne doit pas être recopiée.
  * @param {Object} tableLieux
  * @param {Set<string>} datesAutorisees - clés formatDateCle des dates valides
  * @param {Set<string>} codesConnus - codes connus, pour extraireStationDepuisModeLibre
  * @param {Array<Object>} erreurs - complété (mutation) avec une entrée par
- *   ModeArrivée renseigné mais dont l'abréviation ne correspond à aucune
- *   entrée de Paramètres (faute de frappe, ancien format non ressaisi...)
+ *   mode renseigné (arrivée ou départ) mais dont l'abréviation ne correspond
+ *   à aucune entrée de Paramètres (faute de frappe, ancien format non
+ *   ressaisi...)
  * @param {Array<Object>} lignesVerifiees - complété (mutation) avec {onglet, ligne}
- *   pour chaque ligne effectivement passée en revue cette génération — sert à
- *   ne remettre en noir (marquerLignesEnErreur) que les lignes réellement
- *   revérifiées, pas toute la feuille, en cas de génération partielle (dates
- *   spécifiques) où d'autres lignes en erreur restent non revérifiées.
+ *   pour chaque ligne effectivement passée en revue cette génération (côté
+ *   arrivée et/ou départ) — sert à ne remettre en noir (marquerLignesEnErreur)
+ *   que les lignes réellement revérifiées, pas toute la feuille, en cas de
+ *   génération partielle (dates spécifiques).
  * @return {Array<Object>} mouvements
  */
-function collecterArrivees(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
+function collecterMouvements(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
   const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
 
-  // Position fixe (pas de recherche dynamique) : verifierEnTetesSources() a
+  // Positions fixes (pas de recherche dynamique) : verifierEnTetesSources() a
   // déjà garanti, avant l'appel à cette fonction, que ces positions sont bonnes.
-  const idx = {};
+  const idxA = {};
   Object.keys(Global.COLONNES_ARRIVEES).forEach(cle => {
-    idx[cle] = Global.COLONNES_ARRIVEES[cle].position;
+    idxA[cle] = Global.COLONNES_ARRIVEES[cle].position;
   });
-
-  const mouvements = [];
-
-  donnees.slice(1).forEach((ligne, i) => {
-    if (!ligne[idx.NOM]) return;
-
-    const date = ligne[idx.DATE_ARRIVEE];
-    if (!(date instanceof Date)) return;
-
-    const cleDate = formatDateCle(date);
-    if (!datesAutorisees.has(cleDate)) return;
-
-    lignesVerifiees.push({ onglet: Global.ONGLET_ARRIVEES, ligne: i + 2 });
-
-    const heureArrivee = ligne[idx.HEURE_ARRIVEE];
-    const heureRenseignee = heureArrivee instanceof Date;
-    const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureArrivee) : null;
-    const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
-    const modeLibre = ligne[idx.MODE_ARRIVEE] ? ligne[idx.MODE_ARRIVEE].toString().trim() : "";
-    const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
-
-    // ModeArrivée renseigné mais abréviation absente de Paramètres — vide n'est
-    // jamais une erreur (trajet pas encore saisi), une valeur non reconnue si.
-    if (modeLibre && !codesConnus.has(station)) {
-      erreurs.push({
-        onglet: Global.ONGLET_ARRIVEES,
-        ligne: i + 2, // +2 : ligne 1 = en-tête, i=0 -> ligne 2
-        nom: ligne[idx.NOM],
-        prenom: ligne[idx.PRENOM],
-        modeBrut: modeLibre
-      });
-    }
-
-    // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
-    // la personne reste visible, comme pour tout lieu non encore reconnu.
-    if (heureEvenementDate && estExcluArrivee(station, heureEvenementDate, ligne[idx.FONCTION])) return;
-
-    let heurePickup = "";
-    let lieuPickup = "";
-    let dureeOccupationChauffeur = 0;
-
-    // Copie brute de ModeArrivée uniquement si l'abréviation est reconnue dans
-    // Paramètres : une abréviation non reconnue est une erreur (déjà signalée
-    // via erreurs/lignesVerifiees plus haut), elle ne doit pas être recopiée.
-    if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
-      const infosLieu = tableLieux[station];
-      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiArrivee));
-      lieuPickup = modeLibre;
-      dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
-    }
-
-    mouvements.push({
-      date: date,
-      nom: ligne[idx.NOM],
-      prenom: ligne[idx.PRENOM],
-      fonction: ligne[idx.FONCTION],
-      telephone: ligne[idx.TELEPHONE],
-      heurePickup: heurePickup,
-      lieuPickup: lieuPickup,
-      lieuDepose: ligne[idx.HOTEL],
-      heureEvenement: heureEvenementBrute,
-      dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
-      origine: "Arrivée"
-    });
-  });
-
-  return mouvements;
-}
-
-/**
- * Parcourt ARRIVEES et retourne, pour toute personne dont DateDépart tombe
- * dans datesAutorisees, son mouvement de départ — même si ModeDépart est
- * encore vide ou non reconnu (mêmes règles que collecterArrivees, y compris
- * la règle Saint-Roch/PPM via estExcluDepart). Lit les colonnes départ
- * (H, I, J) de la même feuille et des mêmes lignes que collecterArrivees ;
- * il n'y a plus d'onglet DEPARTS séparé.
- * @param {Object} tableLieux
- * @param {Set<string>} datesAutorisees
- * @param {Set<string>} codesConnus
- * @param {Array<Object>} erreurs - complété (mutation) avec une entrée par
- *   ModeDépart renseigné mais dont l'abréviation ne correspond à aucune
- *   entrée de Paramètres (faute de frappe, ancien format non ressaisi...)
- * @param {Array<Object>} lignesVerifiees - complété (mutation) avec {onglet, ligne}
- *   pour chaque ligne effectivement passée en revue cette génération (voir
- *   collecterArrivees)
- * @return {Array<Object>} mouvements
- */
-function collecterDeparts(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
-  const donnees = feuille.getDataRange().getValues();
-
-  // Position fixe (pas de recherche dynamique) : verifierEnTetesSources() a
-  // déjà garanti, avant l'appel à cette fonction, que ces positions sont bonnes.
-  const idx = {};
+  const idxD = {};
   Object.keys(Global.COLONNES_DEPARTS).forEach(cle => {
-    idx[cle] = Global.COLONNES_DEPARTS[cle].position;
+    idxD[cle] = Global.COLONNES_DEPARTS[cle].position;
   });
 
   const mouvements = [];
 
   donnees.slice(1).forEach((ligne, i) => {
-    if (!ligne[idx.NOM]) return;
+    if (!ligne[idxA.NOM]) return;
 
-    const date = ligne[idx.DATE_DEPART];
-    if (!(date instanceof Date)) return;
+    const numeroLigne = i + 2; // ligne 1 = en-tête, i=0 -> ligne 2
 
-    const cleDate = formatDateCle(date);
-    if (!datesAutorisees.has(cleDate)) return;
+    // ---- ARRIVÉE : uniquement DateArrivée/HeureArrivée/ModeArrivée ----
+    const dateArrivee = ligne[idxA.DATE_ARRIVEE];
+    if (dateArrivee instanceof Date && datesAutorisees.has(formatDateCle(dateArrivee))) {
+      lignesVerifiees.push({ onglet: Global.ONGLET_ARRIVEES, ligne: numeroLigne });
 
-    lignesVerifiees.push({ onglet: Global.ONGLET_ARRIVEES, ligne: i + 2 });
+      const heureArrivee = ligne[idxA.HEURE_ARRIVEE];
+      const heureRenseignee = heureArrivee instanceof Date;
+      const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(dateArrivee, heureArrivee) : null;
+      const modeLibre = ligne[idxA.MODE_ARRIVEE] ? ligne[idxA.MODE_ARRIVEE].toString().trim() : "";
+      const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
 
-    const heureDepart = ligne[idx.HEURE_DEPART];
-    const heureRenseignee = heureDepart instanceof Date;
-    const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(date, heureDepart) : null;
-    const heureEvenementBrute = heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "";
-    const modeLibre = ligne[idx.MODE_DEPART] ? ligne[idx.MODE_DEPART].toString().trim() : "";
-    const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
+      // Mode renseigné mais abréviation absente de Paramètres — vide n'est
+      // jamais une erreur (trajet pas encore saisi), une valeur non reconnue si.
+      if (modeLibre && !codesConnus.has(station)) {
+        erreurs.push({
+          onglet: Global.ONGLET_ARRIVEES,
+          ligne: numeroLigne,
+          nom: ligne[idxA.NOM],
+          prenom: ligne[idxA.PRENOM],
+          modeBrut: modeLibre
+        });
+      }
 
-    // ModeDépart renseigné mais abréviation absente de Paramètres — vide n'est
-    // jamais une erreur (trajet pas encore saisi), une valeur non reconnue si.
-    if (modeLibre && !codesConnus.has(station)) {
-      erreurs.push({
-        onglet: Global.ONGLET_ARRIVEES,
-        ligne: i + 2, // +2 : ligne 1 = en-tête, i=0 -> ligne 2
-        nom: ligne[idx.NOM],
-        prenom: ligne[idx.PRENOM],
-        modeBrut: modeLibre
-      });
+      // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ;
+      // sinon la personne reste visible, comme pour tout lieu non reconnu.
+      const exclue = heureEvenementDate && estExcluArrivee(station, heureEvenementDate, ligne[idxA.FONCTION]);
+      if (!exclue) {
+        let heurePickup = "";
+        let lieuPickup = "";
+        let dureeOccupationChauffeur = 0;
+
+        if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
+          const infosLieu = tableLieux[station];
+          heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiArrivee));
+          lieuPickup = modeLibre;
+          dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
+        }
+
+        mouvements.push({
+          date: dateArrivee,
+          nom: ligne[idxA.NOM],
+          prenom: ligne[idxA.PRENOM],
+          fonction: ligne[idxA.FONCTION],
+          telephone: ligne[idxA.TELEPHONE],
+          heurePickup: heurePickup,
+          lieuPickup: lieuPickup,
+          lieuDepose: ligne[idxA.HOTEL],
+          heureEvenement: heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "",
+          dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
+          origine: "Arrivée"
+        });
+      }
     }
 
-    // Règle Saint-Roch/PPM : évaluable seulement si l'heure est connue ; sinon
-    // la personne reste visible, comme pour tout lieu non encore reconnu.
-    if (heureEvenementDate && estExcluDepart(station, heureEvenementDate, ligne[idx.FONCTION])) return;
+    // ---- DÉPART : uniquement DateDépart/HeureDépart/ModeDépart ----
+    const dateDepart = ligne[idxD.DATE_DEPART];
+    if (dateDepart instanceof Date && datesAutorisees.has(formatDateCle(dateDepart))) {
+      lignesVerifiees.push({ onglet: Global.ONGLET_ARRIVEES, ligne: numeroLigne });
 
-    let heurePickup = "";
-    let lieuDepose = "";
-    let dureeOccupationChauffeur = 0;
+      const heureDepart = ligne[idxD.HEURE_DEPART];
+      const heureRenseignee = heureDepart instanceof Date;
+      const heureEvenementDate = heureRenseignee ? combinerDateEtHeure(dateDepart, heureDepart) : null;
+      const modeLibre = ligne[idxD.MODE_DEPART] ? ligne[idxD.MODE_DEPART].toString().trim() : "";
+      const station = extraireStationDepuisModeLibre(modeLibre, codesConnus);
 
-    // Copie brute de ModeDépart uniquement si l'abréviation est reconnue dans
-    // Paramètres : une abréviation non reconnue est une erreur (déjà signalée
-    // via erreurs/lignesVerifiees plus haut), elle ne doit pas être recopiée.
-    if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
-      const infosLieu = tableLieux[station];
-      heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiDepart));
-      lieuDepose = modeLibre;
-      dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
+      if (modeLibre && !codesConnus.has(station)) {
+        erreurs.push({
+          onglet: Global.ONGLET_ARRIVEES,
+          ligne: numeroLigne,
+          nom: ligne[idxD.NOM],
+          prenom: ligne[idxD.PRENOM],
+          modeBrut: modeLibre
+        });
+      }
+
+      const exclue = heureEvenementDate && estExcluDepart(station, heureEvenementDate, ligne[idxD.FONCTION]);
+      if (!exclue) {
+        let heurePickup = "";
+        let lieuDepose = "";
+        let dureeOccupationChauffeur = 0;
+
+        if (heureRenseignee && station && tableLieux.hasOwnProperty(station)) {
+          const infosLieu = tableLieux[station];
+          heurePickup = formatHeureAffichage(new Date(heureEvenementDate.getTime() - infosLieu.delaiDepart));
+          lieuDepose = modeLibre;
+          dureeOccupationChauffeur = infosLieu.dureeOccupation; // interne, jamais affichée
+        }
+
+        mouvements.push({
+          date: dateDepart,
+          nom: ligne[idxD.NOM],
+          prenom: ligne[idxD.PRENOM],
+          fonction: ligne[idxD.FONCTION],
+          telephone: ligne[idxD.TELEPHONE],
+          heurePickup: heurePickup,
+          lieuPickup: ligne[idxD.HOTEL],
+          lieuDepose: lieuDepose,
+          heureEvenement: heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "",
+          dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
+          origine: "Départ"
+        });
+      }
     }
-
-    mouvements.push({
-      date: date,
-      nom: ligne[idx.NOM],
-      prenom: ligne[idx.PRENOM],
-      fonction: ligne[idx.FONCTION],
-      telephone: ligne[idx.TELEPHONE],
-      heurePickup: heurePickup,
-      lieuPickup: ligne[idx.HOTEL],
-      lieuDepose: lieuDepose,
-      heureEvenement: heureEvenementBrute,
-      dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
-      origine: "Départ"
-    });
   });
 
   return mouvements;
@@ -651,10 +612,13 @@ function assurerOngletExiste(nomOnglet) {
 }
 
 /**
- * Mise en forme "tableau propre" d'un onglet journalier : en-tête en gras avec
- * fond coloré, lignes de données centrées avec bordures fines, bandes de couleur
- * alternées, colonnes ajustées à la largeur du contenu, première ligne figée.
- * Rejouable à tout moment sans dégrader le rendu.
+ * Mise en forme "tableau propre" d'un onglet journalier : en-tête TOUJOURS
+ * bleu avec texte blanc, lignes de données centrées avec bordures fines,
+ * colorées manuellement par type (colorerLignesParType), colonnes ajustées à
+ * la largeur du contenu, première ligne figée. Aucun thème de bandes
+ * automatique (applyRowBanding) : il écraserait l'en-tête bleu/blanc juste
+ * défini et empêcherait la coloration par type. Rejouable à tout moment sans
+ * dégrader le rendu.
  * @param {Sheet} feuille
  */
 function formaterOnglet(feuille) {
@@ -662,6 +626,7 @@ function formaterOnglet(feuille) {
   const derniereColonne = feuille.getLastColumn();
   if (derniereLigne < 1 || derniereColonne < 1) return;
 
+  // En-tête : toujours bleu avec texte blanc, quoi qu'il arrive ensuite.
   feuille.getRange(1, 1, 1, derniereColonne)
     .setFontWeight("bold")
     .setBackground("#1c4587")
@@ -675,9 +640,11 @@ function formaterOnglet(feuille) {
     donnees.setHorizontalAlignment("center");
     donnees.setBorder(true, true, true, true, true, true, "#cccccc", SpreadsheetApp.BorderStyle.SOLID);
 
+    // Retire toute bande automatique existante : elle écraserait l'en-tête
+    // bleu/blanc et empêcherait la coloration manuelle par type ci-dessous.
     feuille.getBandings().forEach(bande => bande.remove());
-    feuille.getRange(1, 1, derniereLigne, derniereColonne)
-      .applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
+
+    colorerLignesParType(feuille);
   }
 
   // Force le format Heure (HH:mm) sur les colonnes calculées, au cas où la
@@ -697,6 +664,36 @@ function formaterOnglet(feuille) {
   }
 
   feuille.autoResizeColumns(1, derniereColonne);
+}
+
+/**
+ * Colore chaque ligne de données selon la colonne "Arrivée/Départ" : gris
+ * clair pour un Départ, blanc pour une Arrivée — pour les distinguer d'un
+ * coup d'œil maintenant que le thème de bandes automatique est retiré
+ * (voir formaterOnglet). Ne colore rien si la colonne est introuvable
+ * (faute de frappe dans l'en-tête de Planning Source) plutôt que de planter.
+ * @param {Sheet} feuille
+ */
+function colorerLignesParType(feuille) {
+  const derniereLigne = feuille.getLastRow();
+  const derniereColonne = feuille.getLastColumn();
+  if (derniereLigne < 2) return;
+
+  const enTetes = feuille.getRange(1, 1, 1, derniereColonne).getValues()[0]
+    .map(valeur => (valeur || "").toString().trim());
+  const idxOrigine = enTetes.indexOf(Global.COLONNES_PLANNING.ORIGINE) + 1;
+  if (idxOrigine === 0) return;
+
+  const COULEUR_DEPART = "#f3f3f3";
+  const COULEUR_ARRIVEE = "#ffffff";
+
+  const valeurs = feuille.getRange(2, idxOrigine, derniereLigne - 1, 1).getValues();
+
+  valeurs.forEach((ligne, i) => {
+    const origine = (ligne[0] || "").toString().trim();
+    const couleur = origine === "Départ" ? COULEUR_DEPART : COULEUR_ARRIVEE;
+    feuille.getRange(2 + i, 1, 1, derniereColonne).setBackground(couleur);
+  });
 }
 
 /**
@@ -789,8 +786,9 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
  * Orchestration : vérifie d'abord les en-têtes d'ARRIVEES (arrête tout avec
  * une alerte claire en cas d'écart), colore ARRIVEES par blocs de dates, lit
  * la table Paramètres unifiée une seule fois, en déduit les codes connus,
- * collecte arrivées et départs (les deux depuis ARRIVEES), puis écrit (ajout
- * uniquement) dans les onglets concernés. Un onglet n'est créé (copie de
+ * collecte les mouvements (arrivées et départs, les deux depuis ARRIVEES, en
+ * un seul passage via collecterMouvements), puis écrit (ajout uniquement)
+ * dans les onglets concernés. Un onglet n'est créé (copie de
  * Planning Source) que pour une date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
@@ -807,8 +805,7 @@ function genererPlannings(datesCiblees) {
 
   const erreurs = [];
   const lignesVerifiees = [];
-  const mouvements = collecterArrivees(tableLieux, clesAutorisees, codesConnus, erreurs, lignesVerifiees)
-    .concat(collecterDeparts(tableLieux, clesAutorisees, codesConnus, erreurs, lignesVerifiees));
+  const mouvements = collecterMouvements(tableLieux, clesAutorisees, codesConnus, erreurs, lignesVerifiees);
 
   marquerLignesEnErreur(lignesVerifiees, erreurs); // rouge sur les lignes en erreur, remis en noir sinon
 
