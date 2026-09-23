@@ -7,6 +7,22 @@
  */
 
 /**
+ * Récupère un onglet par son nom et arrête le script avec un message clair
+ * s'il n'existe pas (ex. onglet renommé dans le classeur mais pas dans
+ * Global.js), au lieu d'une erreur obscure "null" plus loin.
+ * @param {string} nomOnglet
+ * @return {Sheet}
+ */
+function obtenirOnglet(nomOnglet) {
+  const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+  if (!feuille) {
+    throw new Error("L'onglet \"" + nomOnglet + "\" est introuvable. Vérifie que son nom dans le " +
+      "classeur correspond exactement à celui défini dans Global.js.");
+  }
+  return feuille;
+}
+
+/**
  * Normalise un nom de lieu pour comparaison : retire les espaces, met en
  * majuscules. Permet de faire matcher "St Roch" et "StRoch".
  * @param {string} texte
@@ -20,7 +36,8 @@ function normaliserStation(texte) {
 /**
  * Extrait l'abréviation de lieu d'un texte libre de ModeArrivée/ModeDépart :
  * "StRoch>Corum", "Corum>SDF", "MRS>Corum ", "PPM", "MRS OS399",
- * "SDF TGV 6047"... Le format "A>B" prend le côté qui n'est pas "Corum" ;
+ * "SDF TGV 6047"... Le format "A>B" prend le côté qui n'est pas
+ * Global.LIEU_FESTIVAL ;
  * sinon on cherche le plus long code connu en préfixe, pour ignorer un
  * numéro de vol/train accolé.
  * @param {string} texteLibre
@@ -35,7 +52,7 @@ function extraireStationDepuisModeLibre(texteLibre, codesConnus) {
   if (parties.length === 2) {
     const gauche = normaliserStation(parties[0]);
     const droite = normaliserStation(parties[1]);
-    return gauche === "CORUM" ? droite : gauche;
+    return gauche === normaliserStation(Global.LIEU_FESTIVAL) ? droite : gauche;
   }
 
   const texteNormalise = normaliserStation(texte);
@@ -50,8 +67,6 @@ function extraireStationDepuisModeLibre(texteLibre, codesConnus) {
   return texteNormalise; // repli : aucun code connu ne correspond, ne matchera probablement aucune table
 }
 
-const FONCTIONS_EXCEPTION = ["avant-première", "jury antigone d'or", "jury bourse d'aide"];
-
 /**
  * Indique si une fonction fait partie des exceptions à la règle d'exclusion
  * Saint-Roch/PPM (comparaison insensible à la casse/aux espaces superflus).
@@ -60,7 +75,8 @@ const FONCTIONS_EXCEPTION = ["avant-première", "jury antigone d'or", "jury bour
  */
 function estFonctionException(fonction) {
   if (!fonction) return false;
-  return FONCTIONS_EXCEPTION.includes(fonction.toString().trim().toLowerCase());
+  const valeur = fonction.toString().trim().toLowerCase();
+  return Global.FONCTIONS_EXCEPTION.some(f => f.toString().trim().toLowerCase() === valeur);
 }
 
 /**
@@ -72,18 +88,19 @@ function minutesDepuisMinuit(date) {
 }
 
 /**
- * Vrai pour Saint-Roch ("SR") ou pour un code "moyen propre" (PPM) : les deux
+ * Vrai pour Saint-Roch (Global.STATION_SAINT_ROCH) ou pour un code "moyen propre" (PPM) : les deux
  * suivent les mêmes exceptions.
  * @param {string} station - abréviation déjà extraite/normalisée
  * @return {boolean}
  */
 function estStationSoumiseAExceptions(station) {
-  if (station === "SR") return true;
+  if (station === normaliserStation(Global.STATION_SAINT_ROCH)) return true;
   return Global.CODES_MOYEN_PROPRE.some(code => normaliserStation(code) === station);
 }
 
 /**
- * Règle Saint-Roch/PPM — arrivée : exclue sauf fonction exception ou arrivée après 21h.
+ * Règle Saint-Roch/PPM — arrivée : exclue sauf fonction exception ou arrivée
+ * après Global.HEURE_LIMITE_ARRIVEE.
  * @param {string} station
  * @param {Date} heureEvenement
  * @param {string} fonction
@@ -92,11 +109,12 @@ function estStationSoumiseAExceptions(station) {
 function estExcluArrivee(station, heureEvenement, fonction) {
   if (!estStationSoumiseAExceptions(station)) return false;
   if (estFonctionException(fonction)) return false;
-  return minutesDepuisMinuit(heureEvenement) <= 21 * 60; // pas "après 21h" → exclue
+  return minutesDepuisMinuit(heureEvenement) <= Global.HEURE_LIMITE_ARRIVEE * 60; // pas "après la limite" → exclue
 }
 
 /**
- * Règle Saint-Roch/PPM — départ : exclu sauf fonction exception ou départ avant 8h.
+ * Règle Saint-Roch/PPM — départ : exclu sauf fonction exception ou départ
+ * avant Global.HEURE_LIMITE_DEPART.
  * @param {string} station
  * @param {Date} heureEvenement
  * @param {string} fonction
@@ -105,7 +123,7 @@ function estExcluArrivee(station, heureEvenement, fonction) {
 function estExcluDepart(station, heureEvenement, fonction) {
   if (!estStationSoumiseAExceptions(station)) return false;
   if (estFonctionException(fonction)) return false;
-  return minutesDepuisMinuit(heureEvenement) >= 8 * 60; // pas "avant 8h" → exclu
+  return minutesDepuisMinuit(heureEvenement) >= Global.HEURE_LIMITE_DEPART * 60; // pas "avant la limite" → exclu
 }
 
 /**
@@ -114,7 +132,7 @@ function estExcluDepart(station, heureEvenement, fonction) {
  * @return {string}
  */
 function formatDateCle(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), "dd/MM/yyyy");
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), Global.FORMAT_DATE);
 }
 
 /**
@@ -132,12 +150,12 @@ function combinerDateEtHeure(date, heure) {
 }
 
 /**
- * Convertit un objet Date en texte "HH:mm" pur (ex: "15:05").
+ * Convertit un objet Date en texte Global.FORMAT_HEURE (ex: "15:05").
  * @param {Date} date
  * @return {string}
  */
 function formatHeureAffichage(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), "HH:mm");
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), Global.FORMAT_HEURE);
 }
 
 /**
@@ -194,42 +212,46 @@ function dureeEnMillisecondes(valeur) {
 }
 
 /**
- * Lit la table `Paramètres` (colonnes A à E), indexée sur la colonne B
- * (Abbréviations 4D) normalisée. La colonne A (nom complet) est ignorée par
- * le script, purement informative pour les humains. Une ligne dont les
- * colonnes C et D sont toutes les deux vides n'est pas ajoutée (cas de SPE
+ * Lit la table Global.ONGLET_PARAMETRES (colonnes décrites par
+ * Global.COLONNES_PARAMETRES), indexée sur la colonne ABREVIATION normalisée.
+ * Les autres colonnes (ex. nom complet en A) sont ignorées par le script,
+ * purement informatives pour les humains. Une ligne dont les colonnes
+ * DELAI_DEPART et DELAI_ARRIVEE sont toutes les deux vides n'est pas ajoutée (cas de SPE
  * et PPM, qui n'ont pas de délai chronométrable) : ces codes resteront avec
  * Heure Pick up vide.
  * @return {Object<string, {delaiDepart:number, delaiArrivee:number, dureeOccupation:number}>}
  */
 function obtenirTableLieux() {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
+  const feuille = obtenirOnglet(Global.ONGLET_PARAMETRES);
+  const premiereLigne = Global.PARAMETRES_PREMIERE_LIGNE;
   const derniereLigne = feuille.getLastRow();
-  if (derniereLigne < 2) return {};
+  if (derniereLigne < premiereLigne) return {};
 
-  const valeurs = feuille.getRange(2, 1, derniereLigne - 1, 5).getValues(); // colonnes A à E
+  const col = Global.COLONNES_PARAMETRES;
+  const nbColonnes = Math.max(...Object.values(col)) + 1; // de la colonne A à la dernière colonne utile
+  const valeurs = feuille.getRange(premiereLigne, 1, derniereLigne - premiereLigne + 1, nbColonnes).getValues();
 
   const table = {};
   valeurs.forEach(ligne => {
-    const abbreviation = normaliserStation(ligne[1]); // colonne B
+    const abbreviation = normaliserStation(ligne[col.ABREVIATION]);
     if (!abbreviation) return;
 
-    const celluleDepart = ligne[2];  // colonne C
-    const celluleArrivee = ligne[3]; // colonne D
+    const celluleDepart = ligne[col.DELAI_DEPART];
+    const celluleArrivee = ligne[col.DELAI_ARRIVEE];
     if (!celluleDepart && !celluleArrivee) return; // ex. SPE, PPM : pas de délai chronométrable
 
     table[abbreviation] = {
       delaiDepart: dureeEnMillisecondes(celluleDepart),
       delaiArrivee: dureeEnMillisecondes(celluleArrivee),
-      dureeOccupation: dureeEnMillisecondes(ligne[4]) // colonne E, jamais affichée
+      dureeOccupation: dureeEnMillisecondes(ligne[col.DUREE_OCCUPATION]) // jamais affichée
     };
   });
   return table;
 }
 
 /**
- * Lit toutes les abréviations réellement présentes en colonne B de
- * Paramètres, y compris celles sans délai chronométrable (ex. SPE) —
+ * Lit toutes les abréviations réellement présentes dans la colonne
+ * ABREVIATION de Global.ONGLET_PARAMETRES, y compris celles sans délai chronométrable (ex. SPE) —
  * contrairement à obtenirTableLieux() qui ne garde que les lieux avec délai.
  * Sert à distinguer une abréviation simplement pas encore chronométrable
  * (reconnue, mais Heure Pick up restera vide) d'une abréviation carrément
@@ -237,11 +259,14 @@ function obtenirTableLieux() {
  * @return {Set<string>} abréviations normalisées présentes dans Paramètres
  */
 function obtenirAbreviationsParametres() {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_PARAMETRES);
+  const feuille = obtenirOnglet(Global.ONGLET_PARAMETRES);
+  const premiereLigne = Global.PARAMETRES_PREMIERE_LIGNE;
   const derniereLigne = feuille.getLastRow();
-  if (derniereLigne < 2) return new Set();
+  if (derniereLigne < premiereLigne) return new Set();
 
-  const valeurs = feuille.getRange(2, 2, derniereLigne - 1, 1).getValues(); // colonne B seule
+  const valeurs = feuille
+    .getRange(premiereLigne, Global.COLONNES_PARAMETRES.ABREVIATION + 1, derniereLigne - premiereLigne + 1, 1)
+    .getValues(); // colonne des abréviations seule
   const codes = new Set();
   valeurs.forEach(ligne => {
     const abbreviation = normaliserStation(ligne[0]);
@@ -277,7 +302,7 @@ function obtenirDatesDisponibles() {
   ajouterDatesDepuisFeuille(Global.ONGLET_ARRIVEES, Global.COLONNES_DEPARTS.DATE_DEPART.position, cles);
 
   return Array.from(cles)
-    .map(cle => Utilities.parseDate(cle, Session.getScriptTimeZone(), "dd/MM/yyyy"))
+    .map(cle => Utilities.parseDate(cle, Session.getScriptTimeZone(), Global.FORMAT_DATE))
     .sort((a, b) => a - b);
 }
 
@@ -289,7 +314,7 @@ function obtenirDatesDisponibles() {
  * @param {Set<string>} cles
  */
 function ajouterDatesDepuisFeuille(nomOnglet, positionColonneDate, cles) {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+  const feuille = obtenirOnglet(nomOnglet);
   const donnees = feuille.getDataRange().getValues();
 
   donnees.slice(1).forEach(ligne => {
@@ -439,7 +464,7 @@ function obtenirCouleursValidees() {
  * @param {number} positionColonneDate
  */
 function colorerBlocsParDate(nomOnglet, positionColonneDate) {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(nomOnglet);
+  const feuille = obtenirOnglet(nomOnglet);
   const derniereLigne = feuille.getLastRow();
   const derniereColonne = feuille.getLastColumn();
   if (derniereLigne < 2) return;
@@ -513,7 +538,7 @@ function colorerBlocsDeDatesDesSources() {
  * @return {Array<Object>} mouvements
  */
 function collecterMouvements(tableLieux, datesAutorisees, codesConnus, erreurs, lignesVerifiees) {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
+  const feuille = obtenirOnglet(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
 
   // Positions fixes (pas de recherche dynamique) : verifierEnTetesSources() a
@@ -583,7 +608,7 @@ function collecterMouvements(tableLieux, datesAutorisees, codesConnus, erreurs, 
           lieuDepose: ligne[idxA.HOTEL],
           heureEvenement: heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "",
           dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
-          origine: "Arrivée"
+          origine: Global.LIBELLES_ORIGINE.ARRIVEE
         });
       }
     }
@@ -633,7 +658,7 @@ function collecterMouvements(tableLieux, datesAutorisees, codesConnus, erreurs, 
           lieuDepose: lieuDepose,
           heureEvenement: heureEvenementDate ? formatHeureAffichage(heureEvenementDate) : "",
           dureeOccupationChauffeur: dureeOccupationChauffeur, // interne uniquement, jamais écrite dans un onglet
-          origine: "Départ"
+          origine: Global.LIBELLES_ORIGINE.DEPART
         });
       }
     }
@@ -711,10 +736,10 @@ function formaterOnglet(feuille) {
 
   if (derniereLigne > 1) {
     if (idxHeurePickup > 0) {
-      feuille.getRange(2, idxHeurePickup, derniereLigne - 1, 1).setNumberFormat("HH:mm");
+      feuille.getRange(2, idxHeurePickup, derniereLigne - 1, 1).setNumberFormat(Global.FORMAT_HEURE);
     }
     if (idxHeureDepart > 0) {
-      feuille.getRange(2, idxHeureDepart, derniereLigne - 1, 1).setNumberFormat("HH:mm");
+      feuille.getRange(2, idxHeureDepart, derniereLigne - 1, 1).setNumberFormat(Global.FORMAT_HEURE);
     }
   }
 
@@ -745,7 +770,7 @@ function colorerLignesParType(feuille) {
 
   const fonds = valeurs.map(ligne => {
     const origine = (ligne[0] || "").toString().trim();
-    const couleur = origine === "Départ" ? couleurs.LIGNE_DEPART : couleurs.LIGNE_ARRIVEE;
+    const couleur = origine === Global.LIBELLES_ORIGINE.DEPART ? couleurs.LIGNE_DEPART : couleurs.LIGNE_ARRIVEE;
     return new Array(derniereColonne).fill(couleur);
   });
 
@@ -899,7 +924,7 @@ function genererPlannings(datesCiblees) {
  * @param {Array<{onglet:string, ligne:number}>} erreurs
  */
 function marquerLignesEnErreur(lignesVerifiees, erreurs) {
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
+  const feuille = obtenirOnglet(Global.ONGLET_ARRIVEES);
   const derniereColonne = feuille.getLastColumn();
   if (derniereColonne < 1) return;
 
@@ -924,14 +949,14 @@ function marquerLignesEnErreur(lignesVerifiees, erreurs) {
  */
 function afficherErreursDetection(erreurs) {
   const details = erreurs.map(e =>
-    "• " + e.onglet + " : " + e.nom + " " + e.prenom + " — abréviation \"" + e.modeBrut + "\" non reconnue dans Paramètres"
+    "• " + e.onglet + " : " + e.nom + " " + e.prenom + " — abréviation \"" + e.modeBrut + "\" non reconnue dans " + Global.ONGLET_PARAMETRES
   ).join("\n");
 
   SpreadsheetApp.getUi().alert(
     erreurs.length + " abréviation(s) non reconnue(s)",
-    "Ces personnes ont été incluses avec Heure Pick up vide, faute d'abréviation reconnue dans " +
-    "Paramètres. Corrige la saisie ou ajoute le code dans Paramètres puis régénère — les lignes " +
-    "concernées sont surlignées en rouge dans ARRIVEES :\n\n" + details,
+    "Ces personnes ont été incluses avec " + Global.COLONNES_PLANNING.HEURE_PICKUP + " vide, faute d'abréviation reconnue dans " +
+    Global.ONGLET_PARAMETRES + ". Corrige la saisie ou ajoute le code dans " + Global.ONGLET_PARAMETRES + " puis régénère — les lignes " +
+    "concernées sont surlignées en rouge dans " + Global.ONGLET_ARRIVEES + " :\n\n" + details,
     SpreadsheetApp.getUi().ButtonSet.OK
   );
 }
@@ -996,7 +1021,7 @@ function extraireJourDuNomOnglet(nomOnglet) {
  * des lignes qui semblent pourtant avoir un code valide.
  */
 function diagnostiquerDetectionLieux() {
-  Logger.log("=== Vérification des en-têtes ARRIVEES ===");
+  Logger.log("=== Vérification des en-têtes " + Global.ONGLET_ARRIVEES + " ===");
   const erreursEnTetes = verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_ARRIVEES)
     .concat(verifierEnTetesOnglet(Global.ONGLET_ARRIVEES, Global.COLONNES_DEPARTS));
   if (erreursEnTetes.length === 0) {
@@ -1007,17 +1032,18 @@ function diagnostiquerDetectionLieux() {
   }
 
   const tableLieux = obtenirTableLieux();
-  Logger.log("=== Table Paramètres lue ===");
+  Logger.log("=== Table " + Global.ONGLET_PARAMETRES + " lue ===");
   Logger.log(JSON.stringify(tableLieux, null, 2));
   if (Object.keys(tableLieux).length === 0) {
-    Logger.log("⚠️ ALERTE : la table est vide. Vérifie que l'onglet 'Paramètres' existe, " +
-      "que les colonnes C/D contiennent des HEURES (pas du texte), et qu'au moins une ligne " +
-      "a une valeur non vide en C ou D.");
+    Logger.log("⚠️ ALERTE : la table est vide. Vérifie que l'onglet '" + Global.ONGLET_PARAMETRES + "' existe, " +
+      "que les colonnes " + lettreColonne(Global.COLONNES_PARAMETRES.DELAI_DEPART) + "/" +
+      lettreColonne(Global.COLONNES_PARAMETRES.DELAI_ARRIVEE) + " contiennent des HEURES (pas du texte), " +
+      "et qu'au moins une ligne a une valeur non vide dans l'une des deux.");
   }
 
   const codesConnus = obtenirCodesStationConnus(tableLieux);
 
-  const feuille = SpreadsheetApp.getActive().getSheetByName(Global.ONGLET_ARRIVEES);
+  const feuille = obtenirOnglet(Global.ONGLET_ARRIVEES);
   const donnees = feuille.getDataRange().getValues();
   const idxNom = Global.COLONNES_SOURCE.NOM.position;
   const idxModeArrivee = Global.COLONNES_ARRIVEES.MODE_ARRIVEE.position;
@@ -1031,12 +1057,12 @@ function diagnostiquerDetectionLieux() {
     const stationArrivee = extraireStationDepuisModeLibre(modeArrivee, codesConnus);
     const matcheArrivee = stationArrivee && tableLieux.hasOwnProperty(stationArrivee);
     Logger.log(ligne[idxNom] + " | ARRIVÉE mode brut: \"" + modeArrivee + "\" -> détecté: \"" + stationArrivee +
-      "\" -> " + (matcheArrivee ? "OK, trouvé dans Paramètres" : "PAS DE MATCH"));
+      "\" -> " + (matcheArrivee ? "OK, trouvé dans " + Global.ONGLET_PARAMETRES : "PAS DE MATCH"));
 
     const modeDepart = ligne[idxModeDepart] ? ligne[idxModeDepart].toString().trim() : "";
     const stationDepart = extraireStationDepuisModeLibre(modeDepart, codesConnus);
     const matcheDepart = stationDepart && tableLieux.hasOwnProperty(stationDepart);
     Logger.log(ligne[idxNom] + " | DÉPART mode brut: \"" + modeDepart + "\" -> détecté: \"" + stationDepart +
-      "\" -> " + (matcheDepart ? "OK, trouvé dans Paramètres" : "PAS DE MATCH"));
+      "\" -> " + (matcheDepart ? "OK, trouvé dans " + Global.ONGLET_PARAMETRES : "PAS DE MATCH"));
   });
 }

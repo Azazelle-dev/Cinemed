@@ -18,7 +18,7 @@
       function afficherDates(dates) {
         const conteneur = document.getElementById("liste");
         if (!dates.length) {
-          conteneur.innerHTML = "Aucune date trouvée dans l'onglet Paramètres.";
+          conteneur.innerHTML = "Aucune date trouvée dans l'onglet des arrivées/départs.";
           return;
         }
         conteneur.innerHTML = dates.map(d =>

@@ -85,7 +85,45 @@ const Global = {
     HOTEL: COLONNES_SOURCE.HOTEL
   },
 
+  // Colonnes de l'onglet Paramètres (position 0-based, "A" = 0). La table est
+  // lue de la colonne A jusqu'à la plus grande position ci-dessous, à partir
+  // de PARAMETRES_PREMIERE_LIGNE (la ligne 1 étant l'en-tête).
+  PARAMETRES_PREMIERE_LIGNE: 2,
+  COLONNES_PARAMETRES: {
+    ABREVIATION: 1,      // B : abréviation 4D (ex. "MRS", "SR")
+    DELAI_DEPART: 2,     // C : délai soustrait à l'heure d'un départ
+    DELAI_ARRIVEE: 3,    // D : délai soustrait à l'heure d'une arrivée
+    DUREE_OCCUPATION: 4  // E : durée d'occupation du chauffeur (jamais affichée)
+  },
+
+  // Lieu du festival : dans un mode "A>B", c'est le côté qui n'est PAS ce lieu
+  // qui donne l'abréviation (ex. "StRoch>Corum" -> "STROCH").
+  LIEU_FESTIVAL: "Corum",
+
+  // Abréviation de la gare Saint-Roch, soumise aux mêmes exceptions que PPM.
+  STATION_SAINT_ROCH: "SR",
+
   CODES_MOYEN_PROPRE: ["PPM"], // valeurs qui excluent totalement la personne du planning
+
+  // Fonctions (colonne Fonction d'ARRIVEES) jamais exclues par la règle
+  // Saint-Roch/PPM. Comparaison insensible à la casse et aux espaces autour.
+  FONCTIONS_EXCEPTION: ["avant-première", "jury antigone d'or", "jury bourse d'aide"],
+
+  // Règle Saint-Roch/PPM (heures pleines, 0-23) : une arrivée n'est gardée que
+  // si elle a lieu APRÈS HEURE_LIMITE_ARRIVEE, un départ que s'il a lieu AVANT
+  // HEURE_LIMITE_DEPART.
+  HEURE_LIMITE_ARRIVEE: 21,
+  HEURE_LIMITE_DEPART: 8,
+
+  // Valeurs écrites dans la colonne "Arrivée/Départ" des plannings (et
+  // utilisées pour colorer les lignes par type).
+  LIBELLES_ORIGINE: {
+    ARRIVEE: "Arrivée",
+    DEPART: "Départ"
+  },
+
+  FORMAT_DATE: "dd/MM/yyyy", // clé de date interne + affichage dans la fenêtre de sélection
+  FORMAT_HEURE: "HH:mm",     // heures écrites/affichées dans les plannings
 
   JOURS_FR: ["DIMANCHE", "LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI"],
 
