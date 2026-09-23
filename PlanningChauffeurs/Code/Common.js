@@ -405,7 +405,7 @@ function colorerBlocsParDate(nomOnglet, positionColonneDate) {
 
   const donnees = feuille.getRange(1, 1, derniereLigne, derniereColonne).getValues();
 
-  const couleurs = ["#ffffff", "#f3f3f3"]; // blanc / gris clair — à ajuster au goût
+  const couleurs = [Global.COULEURS.SOURCE_BLOC_1, Global.COULEURS.SOURCE_BLOC_2];
   let indexCouleur = 0;
   let cleDatePrecedente = null;
 
@@ -629,8 +629,8 @@ function formaterOnglet(feuille) {
   // En-tête : toujours bleu avec texte blanc, quoi qu'il arrive ensuite.
   feuille.getRange(1, 1, 1, derniereColonne)
     .setFontWeight("bold")
-    .setBackground("#1c4587")
-    .setFontColor("#ffffff")
+    .setBackground(Global.COULEURS.ENTETE_FOND)
+    .setFontColor(Global.COULEURS.ENTETE_TEXTE)
     .setHorizontalAlignment("center");
 
   feuille.setFrozenRows(1);
@@ -638,7 +638,7 @@ function formaterOnglet(feuille) {
   if (derniereLigne > 1) {
     const donnees = feuille.getRange(2, 1, derniereLigne - 1, derniereColonne);
     donnees.setHorizontalAlignment("center");
-    donnees.setBorder(true, true, true, true, true, true, "#cccccc", SpreadsheetApp.BorderStyle.SOLID);
+    donnees.setBorder(true, true, true, true, true, true, Global.COULEURS.BORDURE_DONNEES, SpreadsheetApp.BorderStyle.SOLID);
 
     // Retire toute bande automatique existante : elle écraserait l'en-tête
     // bleu/blanc et empêcherait la coloration manuelle par type ci-dessous.
@@ -684,14 +684,11 @@ function colorerLignesParType(feuille) {
   const idxOrigine = enTetes.indexOf(Global.COLONNES_PLANNING.ORIGINE) + 1;
   if (idxOrigine === 0) return;
 
-  const COULEUR_DEPART = "#f3f3f3";
-  const COULEUR_ARRIVEE = "#ffffff";
-
   const valeurs = feuille.getRange(2, idxOrigine, derniereLigne - 1, 1).getValues();
 
   valeurs.forEach((ligne, i) => {
     const origine = (ligne[0] || "").toString().trim();
-    const couleur = origine === "Départ" ? COULEUR_DEPART : COULEUR_ARRIVEE;
+    const couleur = origine === "Départ" ? Global.COULEURS.LIGNE_DEPART : Global.COULEURS.LIGNE_ARRIVEE;
     feuille.getRange(2 + i, 1, 1, derniereColonne).setBackground(couleur);
   });
 }
@@ -788,8 +785,9 @@ function ecrireMouvementsDansOnglet(nomOnglet, mouvements) {
  * la table Paramètres unifiée une seule fois, en déduit les codes connus,
  * collecte les mouvements (arrivées et départs, les deux depuis ARRIVEES, en
  * un seul passage via collecterMouvements), puis écrit (ajout uniquement)
- * dans les onglets concernés. Un onglet n'est créé (copie de
- * Planning Source) que pour une date ayant au moins une personne.
+ * dans les onglets concernés, et réordonne enfin les onglets de planning
+ * chronologiquement. Un onglet n'est créé (copie de Planning Source) que
+ * pour une date ayant au moins une personne.
  * @param {Date[]} [datesCiblees]
  */
 function genererPlannings(datesCiblees) {
@@ -818,6 +816,8 @@ function genererPlannings(datesCiblees) {
 
   Object.keys(parOnglet).forEach(nomOnglet => ecrireMouvementsDansOnglet(nomOnglet, parOnglet[nomOnglet]));
 
+  reordonnerOngletsChronologiquement();
+
   if (erreurs.length > 0) afficherErreursDetection(erreurs);
 }
 
@@ -839,8 +839,8 @@ function marquerLignesEnErreur(lignesVerifiees, erreurs) {
   const derniereColonne = feuille.getLastColumn();
   if (derniereColonne < 1) return;
 
-  lignesVerifiees.forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor("#000000"));
-  erreurs.forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor("#ff0000"));
+  lignesVerifiees.forEach(l => feuille.getRange(l.ligne, 1, 1, derniereColonne).setFontColor(Global.COULEURS.TEXTE_NORMAL));
+  erreurs.forEach(e => feuille.getRange(e.ligne, 1, 1, derniereColonne).setFontColor(Global.COULEURS.TEXTE_ERREUR));
 }
 
 /**
@@ -878,6 +878,41 @@ function supprimerPlanningsGeneres() {
       classeur.deleteSheet(feuille);
     }
   });
+}
+
+/**
+ * Réordonne tous les onglets de planning (nommés "JOUR NUMÉRO") par ordre
+ * chronologique, en les regroupant à l'emplacement où se trouvait le premier
+ * d'entre eux. Ne touche à aucun autre onglet du classeur. Change l'onglet
+ * actif (moveActiveSheet l'impose) : les actions de menu le restaurent.
+ */
+function reordonnerOngletsChronologiquement() {
+  const classeur = SpreadsheetApp.getActive();
+  const motifNomJour = new RegExp("^(" + Global.JOURS_FR.join("|") + ") \\d{1,2}$");
+
+  const feuillesPlanning = classeur.getSheets().filter(feuille => motifNomJour.test(feuille.getName()));
+  if (feuillesPlanning.length === 0) return;
+
+  const indexDepart = Math.min(...feuillesPlanning.map(feuille => feuille.getIndex()));
+
+  feuillesPlanning.sort((a, b) => extraireJourDuNomOnglet(a.getName()) - extraireJourDuNomOnglet(b.getName()));
+
+  feuillesPlanning.forEach((feuille, i) => {
+    classeur.setActiveSheet(feuille);
+    classeur.moveActiveSheet(indexDepart + i);
+  });
+}
+
+/**
+ * Extrait le numéro de jour à la fin du nom d'un onglet de planning
+ * (ex. "VENDREDI 16" -> 16), pour pouvoir les trier chronologiquement. Suffit
+ * tant que le festival ne s'étend pas sur deux mois différents.
+ * @param {string} nomOnglet
+ * @return {number}
+ */
+function extraireJourDuNomOnglet(nomOnglet) {
+  const correspondance = nomOnglet.match(/(\d{1,2})$/);
+  return correspondance ? parseInt(correspondance[1], 10) : 0;
 }
 
 /**
